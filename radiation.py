@@ -6,6 +6,7 @@ class RadiationField:
         self.r_s = 0.5  # Source radius
         self.r_d = 0.5  # Detector radius
         self.T = 100  # Transmission factor
+        self.workspace_size = workspace_size
 
     def generate_sources(self, num_sources, workspace_size, intensity_range):
         """Generate random sources within the workspace."""
@@ -52,3 +53,21 @@ class RadiationField:
                 theta = np.arcsin(self.r_d / dist)
                 R += 0.5 * A_n * (1 - np.cos(theta))
         return R
+
+    def ground_truth(self):
+        x = np.linspace(0, self.workspace_size[0], 200)
+        y = np.linspace(0, self.workspace_size[1], 200)
+        X, Y = np.meshgrid(x, y)
+        Z_true = np.zeros(X.shape)
+        for i in range(X.shape[0]):
+            for j in range(X.shape[1]):
+                r = np.array([X[i, j], Y[i, j]])
+                Z_true[i, j] = self.intensity(r) + 50 * self.response(r)
+        return X, Y, Z_true
+    
+    def simulate_measurements(self, waypoints, noise_level=0.005):
+        measurements = []
+        for wp in waypoints:
+            measurement = self.intensity(wp) + np.random.normal(0, noise_level)
+            measurements.append(measurement)
+        return measurements

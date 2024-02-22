@@ -1,35 +1,24 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import ticker, colors
-from radiation import RadiationField  # Make sure RadiationField is defined in radiation.py
-from cma import CMAEvolutionStrategy as CMAES
+from radiation import RadiationField  # Ensure this class is correctly defined in your radiation.py
+from ipp import InformativePathPlanning  # Ensure this class is correctly defined in your ipp.py
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
-from ipp import generate_nominal_path
 
 # Instantiate RadiationField with desired parameters
 radiation_field = RadiationField(num_sources=1, workspace_size=(40, 40), intensity_range=(10000, 100000))
+radiation_field.update_source(0, 20, 20, 100000)  # Update source to be at (20, 20) with intensity 100000
 
-# Define the spatial domain
-x = np.linspace(0, 40, 200)
-y = np.linspace(0, 40, 200)
-X, Y = np.meshgrid(x, y)
+# Define the spatial domain for visualization
+X, Y, Z_true = radiation_field.ground_truth()
 
-# Ground truth radiation field generation
-Z_true = np.zeros(X.shape)
-for i in range(X.shape[0]):
-    for j in range(X.shape[1]):
-        r = np.array([X[i, j], Y[i, j]])  
-        Z_true[i, j] = radiation_field.intensity(r) + 50 * radiation_field.response(r)
+# Initialize IPP with parameters and generate nominal path
+ipp = InformativePathPlanning(workspace_size=(40, 40), n_waypoints=29, distance_budget=250)
+optimal_waypoints = ipp.generate_nominal_path()
 
-# Generate nominal path
-waypoints = 29
-distance_budget = 250
-optimal_waypoints = generate_nominal_path(n_waypoints=waypoints, distance_budget=distance_budget)
-
-# Simulate noisy measurements along the path
-noise_level = 0.05  # Adjust as necessary
-measurements = [radiation_field.intensity(wp) + np.random.normal(0, noise_level) for wp in optimal_waypoints]
+# Given optimal_waypoints generated from IPP
+measurements = radiation_field.simulate_measurements(optimal_waypoints)
 
 # Use Gaussian Process Regression to predict the spatial field
 kernel = C(1.0, (1e-3, 1e3)) * RBF(10, (1e-2, 1e2))

@@ -1,4 +1,6 @@
 import numpy as np
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
 
 class RadiationField:
     def __init__(self, num_sources=1, workspace_size=(40, 40), intensity_range=(10000, 100000)):
@@ -7,6 +9,10 @@ class RadiationField:
         self.r_d = 0.5  # Detector radius
         self.T = 100  # Transmission factor
         self.workspace_size = workspace_size
+        self.x = np.linspace(0, self.workspace_size[0], 200)
+        self.y = np.linspace(0, self.workspace_size[1], 200)
+        self.X, self.Y = np.meshgrid(self.x, self.y)
+        self.g_truth = self.ground_truth()
 
     def generate_sources(self, num_sources, workspace_size, intensity_range):
         """Generate random sources within the workspace."""
@@ -55,15 +61,12 @@ class RadiationField:
         return R
 
     def ground_truth(self):
-        x = np.linspace(0, self.workspace_size[0], 200)
-        y = np.linspace(0, self.workspace_size[1], 200)
-        X, Y = np.meshgrid(x, y)
-        Z_true = np.zeros(X.shape)
-        for i in range(X.shape[0]):
-            for j in range(X.shape[1]):
-                r = np.array([X[i, j], Y[i, j]])
+        Z_true = np.zeros(self.X.shape)
+        for i in range(self.X.shape[0]):
+            for j in range(self.X.shape[1]):
+                r = np.array([self.X[i, j], self.Y[i, j]])
                 Z_true[i, j] = self.intensity(r) + 50 * self.response(r)
-        return X, Y, Z_true
+        return Z_true
     
     def simulate_measurements(self, waypoints, noise_level=0.005):
         measurements = []
@@ -71,3 +74,13 @@ class RadiationField:
             measurement = self.intensity(wp) + np.random.normal(0, noise_level)
             measurements.append(measurement)
         return measurements
+
+    def predict_spatial_field(self, waypoints, measurements, kernel_params=None):
+        if kernel_params is None:
+            kernel = C(1.0, (1e-3, 1e3)) * RBF(10, (1e-2, 1e2))
+        else:
+            kernel = kernel_params
+        gpr = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10)
+        gpr.fit(waypoints, measurements)
+        Z_pred, _ = gpr.predict(np.hstack((self.X.ravel()[:, np.newaxis], self.Y.ravel()[:, np.newaxis])), return_std=True)
+        return Z_pred.reshape(self.X.shape)

@@ -14,9 +14,9 @@ radiation_field.update_source(0, 20, 20, 100000)  # Update source to be at (20, 
 Z_true = radiation_field.g_truth
 
 # Initialize IPP with parameters and generate nominal path
-ipp = InformativePathPlanning(workspace_size=(40, 40), n_waypoints=29, distance_budget=250)
-optimal_waypoints = ipp.generate_nominal_path()
-
+ipp = InformativePathPlanning(workspace_size=(40, 40), n_waypoints=29, distance_budget=400)
+# optimal_waypoints = ipp.generate_nominal_path()
+test = ipp.GenerateNominalPath()
 # Given optimal_waypoints generated from IPP
 measurements = radiation_field.simulate_measurements(optimal_waypoints, noise_level=0)
 

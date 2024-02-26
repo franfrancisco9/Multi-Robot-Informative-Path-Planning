@@ -130,7 +130,7 @@ class InformativePathPlanning:
     def generate_nominal_path(self):
         adjustable_waypoints = self.n_waypoints - 2
         x0 = np.random.rand(adjustable_waypoints * 2) * self.workspace_size[0]
-        es = cma.CMAEvolutionStrategy(x0, 0.5)
+        es = cma.CMAEvolutionStrategy(x0, 0.05, {'bounds': [0, self.workspace_size[0]]})
         es.optimize(lambda x: self.objective_function(x))  # Lambda function to pass only waypoints
         self.nominal_path = np.vstack(([0, 0], es.result.xbest.reshape((-1, 2)), [0, 0]))
         return self.nominal_path

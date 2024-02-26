@@ -17,7 +17,8 @@ Z_true = radiation_field.g_truth
 ipp = InformativePathPlanning(workspace_size=(40, 40), n_waypoints=29, distance_budget=400)
 # optimal_waypoints = ipp.generate_nominal_path()
 # To test generate 50 waypoints in a grid pattern in the workspace 
-optimal_waypoints = np.array([[i, j] for i in range(0, 40, 2) for j in range(0, 40, 2)])
+# optimal_waypoints = np.array([[i, j] for i in range(0, 40, 2) for j in range(0, 40, 2)]) # Lawnmower pattern
+optimal_waypoints = ipp.generate_nominal_path()
 # test = ipp.GenerateNominalPath()
 # Given optimal_waypoints generated from IPP
 measurements = radiation_field.simulate_measurements(optimal_waypoints, noise_level=0)

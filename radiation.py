@@ -28,9 +28,14 @@ class RadiationField:
         """Update a specific source's parameters."""
         if source_index < len(self.sources):
             self.sources[source_index] = [new_x, new_y, new_A]
+            self.recalculate_ground_truth()  # Recalculate ground truth after updating the source
         else:
             print("Source index out of range.")
 
+    def recalculate_ground_truth(self):
+        """Recalculate the ground truth based on current source positions."""
+        self.g_truth = self.ground_truth()
+        
     def get_sources_info(self):
         """Return information about the current sources."""
         return self.sources
@@ -68,7 +73,7 @@ class RadiationField:
                 Z_true[i, j] = self.intensity(r) + 50 * self.response(r)
         return Z_true
     
-    def simulate_measurements(self, waypoints, noise_level=0.005):
+    def simulate_measurements(self, waypoints, noise_level=0.5):
         measurements = []
         for wp in waypoints:
             measurement = self.intensity(wp) + np.random.normal(0, noise_level)

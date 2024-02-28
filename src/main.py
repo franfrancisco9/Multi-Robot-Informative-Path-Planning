@@ -19,8 +19,9 @@ scenarios = [
 def plot_scenario(scenario, scenario_number):
     # Generate boustrophedon path
     ipp = InformativePathPlanning(workspace_size=(40, 40), n_waypoints=200, distance_budget=2000)
-    ipp.Boustrophedon((0.5, 0.5), (39.5, 39.5))
-    waypoints = ipp.nominal_path
+    ipp.Boustrophedon()
+    nominal_path = ipp.nominal_path
+    waypoints = ipp.nominal_spread
 
     # Simulate measurements along the path
     measurements = scenario.simulate_measurements(waypoints)
@@ -53,15 +54,15 @@ def plot_scenario(scenario, scenario_number):
     axs[1].set_title(f'Scenario {scenario_number} Predicted Field')
 
     # Improved path plot
-    x_new, y_new = ipp.generate_spline_path()
+    x_new, y_new = ipp.nominal_path
     axs[1].plot(x_new, y_new, 'b-', label='Boustrophedon Path')
-    axs[1].plot(waypoints[:, 0], waypoints[:, 1], 'ro', markersize=2)  # Waypoints
-    axs[1].legend()
+    axs[1].plot(waypoints[:, 0], waypoints[:, 1], 'ro', markersize=5)  # Waypoints
+    axs[1].legend(loc='center left', bbox_to_anchor=(1, 0.5))
     axs[1].set_xlabel('x')
     axs[1].set_ylabel('y')
 
     plt.savefig(f'../images/scenario_{scenario_number}_comparison.png')
-    # plt.show()
+    plt.show()
 
 # Plot each scenario
 for i, scenario in enumerate(scenarios, start=1):

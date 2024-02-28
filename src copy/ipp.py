@@ -94,15 +94,13 @@ class InformativePathPlanning:
             # Reshape X to match sklearn's expected input format
             X = X.reshape(1, -1)
             
-            # Use the GP model to predict the mean and standard deviation (uncertainty) for the new point X
-            mu_XO, std_XO = self.gp.predict(X, return_std=True)
-            
-            # Calculate the utility u(X, O) as half the log of the determinant of the covariance matrix
-            # Here, we simplify by using the uncertainty (std_XO) as a proxy for the determinant calculation
-            # This is a simplification and might need adjustment for your exact use case
-            utility = 0.5 * np.log(np.linalg.det(np.identity(len(X)) * std_XO**2))
-            
-            # Negate the utility since we are minimizing
+          # Use the GP model to predict the mean and standard deviation for point X
+            pred, std = self.gp.predict(X, return_std=True)
+            print("pred: ", pred, "std: ", std)
+            # Instead of using determinant, use the uncertainty (std) directly
+            # Higher uncertainty indicates higher information gain when exploring this point
+            # Negate because we want to maximize this uncertainty (minimize negative uncertainty)
+            utility = 0.5 * np.log(np.linalg.det(np.identity(len(pred)) * std))
             return -utility
         # Example of optimizing with bounds - this needs to be adjusted to your scenario
         bounds = [(0, self.workspace_size[0]), (0, self.workspace_size[1])]

@@ -212,5 +212,5 @@ if __name__ == "__main__":
     ipp = InformativePathPlanning(workspace_size=(40, 40), n_waypoints=200, distance_budget=2000)
     ipp.Boustrophedon()
     ipp.plot_path()
-    # Q, O_p = ipp.IPP()
+    Q, O_p = ipp.IPP()
 

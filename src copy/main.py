@@ -71,6 +71,7 @@ def plot_fields(scenario, Z_true, Z_pred, path, scenario_number):
         ax.set_xlabel('x')
         ax.set_ylabel('y')
         ax.plot(path[:, 0], path[:, 1], 'ro', markersize=5, label='Waypoints')  # Waypoints visualization
+        ax.set_facecolor(cmap(0))
 
     plt.savefig(f'../images/scenario_{scenario_number}_comparison.png')
     plt.show()

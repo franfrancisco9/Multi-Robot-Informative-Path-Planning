@@ -94,7 +94,12 @@ class InformativePathPlanning:
         # K is extracted from GP trained on data from the past observations
         # GP uses SE kernel
         def u(X, O):
-            return 1/2 * np.log(np.linalg.det(np.identity(len(X)) + K(X, O)))
+            # create a sqaured matrix of K(X, O)~
+            Kc = K(X, O)
+            Kc = Kc @ Kc.T
+            # create identity matrix
+            I = np.identity(Kc.shape[0])
+            return 1/2 * np.log(np.linalg.det(I + Kc))
         # K is the kernel matrix
         def K(X, O):
             if np.array(O).shape[0] == 0:  # Check if O is empty

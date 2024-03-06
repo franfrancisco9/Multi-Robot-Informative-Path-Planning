@@ -86,6 +86,9 @@ class RadiationField:
             kernel_params = {'length_scale': 1.0, 'length_scale_bounds': (1e-2, 1e2)}
         kernel = C(1.0, (1e-2, 1e2)) * RBF(kernel_params['length_scale'], length_scale_bounds=kernel_params['length_scale_bounds'])
         gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10)
+        # print the number of gaussians used
+        print(gp.kernel)
+
         gp.fit(waypoints, measurements)
         Z_pred = np.zeros(self.X.shape)
         for i in range(self.X.shape[0]):

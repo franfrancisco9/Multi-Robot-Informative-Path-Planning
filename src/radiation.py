@@ -16,8 +16,8 @@ class RadiationField:
         # kernel should be k(r) = sigma**2 * exp(-r / (2 * l**2))
         if kernel_params is None:
             kernel_params = {'sigma': 1, 'l': 1}
-        kernel = C(kernel_params['sigma'], (1e-3, 1e3)) * RBF(kernel_params['l'], (1e-3, 1e3))
-        self.gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=5, normalize_y=True)
+        kernel = C(kernel_params['sigma'], (0.5, 10)) * RBF(kernel_params['l'], (0.5, 50))
+        self.gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=5)
 
     def generate_sources(self, num_sources, workspace_size, intensity_range):
         """Generate random sources within the workspace."""
@@ -78,12 +78,12 @@ class RadiationField:
                 Z_true[i, j] = self.intensity(r) + 50 * self.response(r)
         return Z_true
     
-    def simulate_measurements(self, waypoints, noise_level=1):
+    def simulate_measurements(self, waypoints, noise_level=0.0001):
         measurements = []
         for wp in waypoints:
             # noise level should affect the correct magnitude of the intensity
             intensity = self.intensity(wp)
-            noise = np.random.normal(0, noise_level * intensity)
+            noise = np.random.normal(0, noise_level)
             measurement = intensity + noise
             measurements.append(measurement)
         return measurements

@@ -44,8 +44,8 @@ def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, current_waypoint
     cs_pred = axs[0][1].contourf(scenario.X, scenario.Y, Z_pred, levels=levels, cmap=cmap, norm=colors.BoundaryNorm(levels, ncolors=cmap.N, clip=True))
     fig.colorbar(cs_pred, ax=axs[0][1], format=ticker.LogFormatterMathtext())
     axs[0][1].set_title(f'Scenario {scenario_number} Predicted Field')
-    x_new, y_new = nominal_path
-    axs[0][1].plot(x_new, y_new, 'b-', label='Boustrophedon Path')
+    # x_new, y_new = nominal_path
+    # axs[0][1].plot(x_new, y_new, 'b-', label='Boustrophedon Path')
     # add the waypoints with red circles
     axs[0][1].plot(current_waypoints[:, 0], current_waypoints[:, 1], 'ro', markersize=5)  # Waypoints
     # make the background the colour of the lowest contour level
@@ -63,13 +63,13 @@ def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, current_waypoint
     axs[1][0].set_facecolor('pink')
 
     # plt.show()
-    plt.savefig(f'../images/scenario_full_{scenario_number}_comparison.png')
+    plt.savefig(f'../images/scenario_new_{scenario_number}_comparison.png')
     plt.close()
     print("Tested waypoints: ", len(current_waypoints), " for scenario ", scenario_number)
 
 
 def run_scenario(scenario, scenario_number):
-    ipp = InformativePathPlanning(workspace_size=(40, 40), n_waypoints=200, distance_budget=2000)
+    ipp = InformativePathPlanning(workspace_size=(40, 40), n_waypoints=200, distance_budget=2000, gp=scenario.gp)
     ipp.IPP()
     nominal_path = ipp.nominal_path
     waypoints = ipp.nominal_spread

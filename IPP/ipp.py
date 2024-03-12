@@ -9,13 +9,16 @@ from radiation import RadiationField
 
 
 class InformativePathPlanning:
-    def __init__(self, workspace_size=(40, 40), n_waypoints=200, distance_budget=2000):
+    def __init__(self, workspace_size=(40, 40), n_waypoints=200, distance_budget=2000, gp = None):
         self.workspace_size = workspace_size
         self.n_waypoints = n_waypoints
         self.distance_budget = distance_budget
         self.nominal_path = None
         self.nominal_spread = None
-        self.gp = GaussianProcessRegressor(kernel=C(1.0, (1e-3, 1e3)) * RBF(10, (1e-2, 1e2)), n_restarts_optimizer=10)
+        if gp is not None:
+            self.gp = gp
+        else:
+            self.gp = GaussianProcessRegressor(kernel=C(1.0, (1e-3, 1e3)) * RBF(10, (1e-2, 1e2)), n_restarts_optimizer=10)
 
     def Boustrophedon(self, d_waypoint_distance=2.5):
         cv = np.array([
@@ -85,7 +88,7 @@ class InformativePathPlanning:
     def observe_path(self, path, O_p):
         scenario = RadiationField(num_sources=1, workspace_size=(40, 40))
         measurements = scenario.simulate_measurements(path)
-        Z_pred = scenario.predict_spatial_field(path, measurements)
+        Z_pred, std = scenario.predict_spatial_field(path, measurements)
         return Z_pred
     
     def Optimize_Path(self, p_agent, p_waypoint, p_next_waypoint, budget_i, travel_distance, inter_observation_distance, horizon_distance, O_p):
@@ -141,7 +144,7 @@ class InformativePathPlanning:
             # Update the GP model with new observations
             X_obs, Y_obs = zip(*O_p)
             self.gp.fit(np.array(X_obs), np.array(Y_obs))
-            
+
             # Update variables for the next iteration
             p_agent = P[-1]  # Last point of the optimized path
             budget_spent += self.path_length(P)
@@ -149,12 +152,30 @@ class InformativePathPlanning:
             print("Percentage of budget spent: ", budget_spent/budget_nominal)
             Q.append(P)
             N_waypoints = N_waypoints[1:]  # Move to the next segment
-            # break at 0.1 or more
-            if budget_spent/budget_nominal >= 0.1:
+            # break at 0.01
+            if budget_spent/budget_nominal > 0.01:
                 break
+        # save the nominal path by combining the several 3 waypoints paths into one
+        new_Q = []
+        for i in range(len(Q)):
+            if i == 0:
+                new_Q.extend(list(Q[i]))
+            else:
+                new_Q.extend(list(Q[i])[1:])
+        Q = new_Q
+        # print("Q: ", Q)
+        q_way = [Q[0]]
+        for i in range(1, len(Q)):
+            if np.linalg.norm(Q[i] - q_way[-1]) > 2.5:
+                q_way.append(Q[i])
+        q_way = np.array(q_way)
+        self.nominal_spread = q_way
+        print("Nominal spread: ", self.nominal_spread)
+        print("Nominal path: ", self.nominal_path)
         return np.concatenate(Q), O_p
 # Example usage
 if __name__ == "__main__":
+
     ipp = InformativePathPlanning(workspace_size=(40, 40), n_waypoints=200, distance_budget=2000)
     ipp.Boustrophedon()
     ipp.plot_path()

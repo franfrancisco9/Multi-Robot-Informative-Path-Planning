@@ -96,11 +96,14 @@ class InformativePathPlanning:
             
           # Use the GP model to predict the mean and standard deviation for point X
             pred, std = self.gp.predict(X, return_std=True)
-            print("pred: ", pred, "std: ", std)
+            # print("pred: ", pred, "std: ", std)
             # Instead of using determinant, use the uncertainty (std) directly
             # Higher uncertainty indicates higher information gain when exploring this point
             # Negate because we want to maximize this uncertainty (minimize negative uncertainty)
-            utility = 0.5 * np.log(np.linalg.det(np.identity(len(pred)) * std))
+            try:
+                utility = 0.5 * np.log(np.linalg.det(np.identity(len(std)) * std))
+            except:
+                utility = 0.5
             return -utility
         # Example of optimizing with bounds - this needs to be adjusted to your scenario
         bounds = [(0, self.workspace_size[0]), (0, self.workspace_size[1])]
@@ -142,9 +145,13 @@ class InformativePathPlanning:
             # Update variables for the next iteration
             p_agent = P[-1]  # Last point of the optimized path
             budget_spent += self.path_length(P)
+            # print percentage of budget spent
+            print("Percentage of budget spent: ", budget_spent/budget_nominal)
             Q.append(P)
             N_waypoints = N_waypoints[1:]  # Move to the next segment
-
+            # break at 0.1 or more
+            if budget_spent/budget_nominal >= 0.1:
+                break
         return np.concatenate(Q), O_p
 # Example usage
 if __name__ == "__main__":

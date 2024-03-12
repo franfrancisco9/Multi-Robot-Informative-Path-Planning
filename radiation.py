@@ -81,23 +81,11 @@ class RadiationField:
         return measurements
 
     def predict_spatial_field(self, waypoints, measurements, kernel_params=None):
-        # Use GP to predict the spatial field in the workspace
         if kernel_params is None:
-            kernel_params = {'length_scale': 1.0, 'length_scale_bounds': (1e-2, 1e2)}
-        kernel = C(1.0, (1e-2, 1e2)) * RBF(kernel_params['length_scale'], length_scale_bounds=kernel_params['length_scale_bounds'])
-        gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10)
-        # print the number of gaussians used
-        # print(gp.n_features_in_)
-
-        gp.fit(waypoints, measurements)
-        # print("Waypoints:", waypoints)
-        Z_pred = np.zeros(self.X.shape)
-        r = []
-        for i in range(self.X.shape[0]):
-            for j in range(self.X.shape[1]):
-                r.append([self.X[i, j], self.Y[i, j]])
-        # print("R:", r)
-        Z_pred = gp.predict(r).reshape(self.X.shape[0], self.X.shape[1])    # Make sure Z_pred is a matrix with self.X.shape[0] rows and self.X.shape[1] columns
-        # print("Z_pred:", Z_pred)
-        return Z_pred
-    
+            kernel = C(1.0, (1e-3, 1e3)) * RBF(10, (1e-2, 1e2))
+        else:
+            kernel = kernel_params
+        gpr = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10)
+        gpr.fit(waypoints, measurements)
+        Z_pred, _ = gpr.predict(np.hstack((self.X.ravel()[:, np.newaxis], self.Y.ravel()[:, np.newaxis])), return_std=True)
+        return Z_pred.reshape(self.X.shape)

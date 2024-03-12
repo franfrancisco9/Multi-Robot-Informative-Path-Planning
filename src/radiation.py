@@ -3,7 +3,7 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
 
 class RadiationField:
-    def __init__(self, num_sources=1, workspace_size=(40, 40), intensity_range=(10000, 100000)):
+    def __init__(self, num_sources=1, workspace_size=(40, 40), intensity_range=(10000, 100000), kernel_params=None):
         self.sources = self.generate_sources(num_sources, workspace_size, intensity_range)
         self.r_s = 0.5  # Source radius
         self.r_d = 0.5  # Detector radius
@@ -13,6 +13,11 @@ class RadiationField:
         self.y = np.linspace(0, self.workspace_size[1], 200)
         self.X, self.Y = np.meshgrid(self.x, self.y)
         self.g_truth = self.ground_truth()
+        # kernel should be k(r) = sigma**2 * exp(-r / (2 * l**2))
+        if kernel_params is None:
+            kernel_params = {'sigma': 1, 'l': 1}
+        kernel = C(kernel_params['sigma'], (1e-3, 1e3)) * RBF(kernel_params['l'], (1e-3, 1e3))
+        self.gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=5, normalize_y=True)
 
     def generate_sources(self, num_sources, workspace_size, intensity_range):
         """Generate random sources within the workspace."""
@@ -73,27 +78,29 @@ class RadiationField:
                 Z_true[i, j] = self.intensity(r) + 50 * self.response(r)
         return Z_true
     
-    def simulate_measurements(self, waypoints, noise_level=0.5):
+    def simulate_measurements(self, waypoints, noise_level=1):
         measurements = []
         for wp in waypoints:
-            measurement = self.intensity(wp) + np.random.normal(0, noise_level)
+            # noise level should affect the correct magnitude of the intensity
+            intensity = self.intensity(wp)
+            noise = np.random.normal(0, noise_level * intensity)
+            measurement = intensity + noise
             measurements.append(measurement)
         return measurements
 
-    def predict_spatial_field(self, waypoints, measurements, kernel_params=None):
-        # Use GP to predict the spatial field in the workspace
-        if kernel_params is None:
-            kernel_params = {'length_scale': 1.0, 'length_scale_bounds': (1e-2, 1e2)}
-        kernel = C(1.0, (1e-2, 1e2)) * RBF(kernel_params['length_scale'], length_scale_bounds=kernel_params['length_scale_bounds'])
-        gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10)
-        # print the number of gaussians used
-        print(gp.kernel)
-
-        gp.fit(waypoints, measurements)
+    def predict_spatial_field(self, waypoints, measurements):
+        # update the current GP model with the new measurements
+        self.gp.fit(waypoints, measurements)
+        # Return the current entire spatial field prediction
         Z_pred = np.zeros(self.X.shape)
+        r = []
         for i in range(self.X.shape[0]):
             for j in range(self.X.shape[1]):
-                r = np.array([self.X[i, j], self.Y[i, j]])
-                Z_pred[i, j] = gp.predict([r])[0]
-
-        return Z_pred
+                r.append([self.X[i, j], self.Y[i, j]])
+        # print("R:", r)
+        # # Make sure Z_pred is a matrix with self.X.shape[0] rows and self.X.shape[1] columns
+        Z_pred, std = self.gp.predict(r, return_std=True) 
+        Z_pred = Z_pred.reshape(self.X.shape[0], self.X.shape[1]) 
+        # print("Z_pred:", Z_pred)
+        return Z_pred, std
+    

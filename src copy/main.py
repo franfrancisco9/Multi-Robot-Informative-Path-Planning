@@ -27,7 +27,7 @@ def plot_scenario(scenario, scenario_number, ipp_path=None):
     
     # If an IPP path is provided, use it; otherwise, use the nominal path for visualization
     if ipp_path is not None:
-        path_to_use = ipp_path
+        path_to_use = ipp.IPP()
     else:
         path_to_use = waypoints
 
@@ -41,11 +41,14 @@ def plot_scenario(scenario, scenario_number, ipp_path=None):
     Z_true = scenario.ground_truth()
 
     # Plotting configurations
-    plot_fields(scenario, Z_true, Z_pred, path_to_use, scenario_number)
+    plot_fields(scenario, Z_true, Z_pred, path_to_use, scenario_number, nominal_path)
 
-def plot_fields(scenario, Z_true, Z_pred, path, scenario_number):
+def plot_fields(scenario, Z_true, Z_pred, path, scenario_number, nominal_path):
     # Determine log scale levels for contour plots
-    max_log_value = np.ceil(np.log10(max(Z_true.max(), 1)))
+    if Z_true.max() == 0:
+        max_log_value = 1
+    else:
+        max_log_value = np.ceil(np.log10(Z_true.max()))
     levels = np.logspace(0, max_log_value, int(max_log_value) + 1)
     cmap = plt.get_cmap('Greens_r', len(levels) - 1)
 
@@ -62,10 +65,13 @@ def plot_fields(scenario, Z_true, Z_pred, path, scenario_number):
     fig.colorbar(cs_pred, ax=axs[1], format=ticker.LogFormatterMathtext())
     axs[1].set_title(f'Scenario {scenario_number} Predicted Field')
 
-    # Plot paths on the Predicted Field plot
-    axs[1].plot(path[:, 0], path[:, 1], 'b-', label='Path')
+    x_new, y_new = nominal_path
+    axs[1].plot(x_new, y_new, 'b-', label='Boustrophedon Path')
     axs[1].legend(loc='center left', bbox_to_anchor=(1, 0.5))
-
+    # add the source locations with red X's
+    sources = scenario.get_sources_info()
+    for source in sources:
+        axs[1].plot(source[0], source[1], 'rX', markersize=10, label='Source')
     # Common configurations for both subplots
     for ax in axs:
         ax.set_xlabel('x')
@@ -73,7 +79,7 @@ def plot_fields(scenario, Z_true, Z_pred, path, scenario_number):
         ax.plot(path[:, 0], path[:, 1], 'ro', markersize=5, label='Waypoints')  # Waypoints visualization
         ax.set_facecolor(cmap(0))
 
-    plt.savefig(f'../images/scenario_{scenario_number}_comparison.png')
+    plt.savefig(f'../images/scenario_ipp_{scenario_number}_comparison.png')
     plt.show()
 
 # Main execution loop for plotting scenarios

@@ -4,6 +4,8 @@ from matplotlib import ticker, colors
 
 from boustrophedon import Boustrophedon
 from radiation import RadiationField
+from randomwalker import RandomWalker 
+from informative import InformativePathPlanning
 
 # Initialize the scenarios
 scenarios = [
@@ -17,7 +19,9 @@ scenarios = [
 scenarios[0].update_source(0, 20, 20, 100000)
 
 # Iniatilize a RMSE list of lists
-RMSE_list =  [[] for _ in range(len(scenarios))]
+RMSE_list_boust =  [[] for _ in range(len(scenarios))]
+RMSE_list_random = [[] for _ in range(len(scenarios))]
+RMSE_list_informative = [[] for _ in range(len(scenarios))]
 
 ROUNDS = 5
 
@@ -89,18 +93,50 @@ def run_Boustrophedon_scenario(scenario, scenario_number, final = False):
     # add RMSE 
     RMSE = np.sqrt(1 / Z_true.size * np.sum((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
     print("RMSE: ", RMSE)
-    RMSE_list[scenario_number - 1].append(RMSE)
+    RMSE_list_boust[scenario_number - 1].append(RMSE)
     if final:
         helper_plot(scenario, scenario_number, Z_true, Z_pred, 
-                    std, boust, RMSE_list[scenario_number - 1])
+                    std, boust, RMSE_list_boust[scenario_number - 1])
+
+def run_Random_Scenario(scenario, scenario_number, final=False):
+    random_walker = RandomWalker(d_waypoint_distance=2.5)
+
+    measurements = scenario.simulate_measurements(random_walker.obs_wp)
+    Z_pred, std = scenario.predict_spatial_field(random_walker.obs_wp, measurements)
+    Z_true = scenario.ground_truth()
+
+    # Calculate RMSE
+    RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
+    print("RMSE: ", RMSE)
+    RMSE_list_random[scenario_number - 1].append(RMSE)
+    if final:
+        helper_plot(scenario, scenario_number, Z_true, Z_pred, std, random_walker, RMSE_list_random[scenario_number - 1])
+
+def run_Informative_Scenario(scenario, scenario_number, final=False):
+    informative_path = InformativePathPlanning(scenario, n_waypoints=200, d_waypoint_distance=2.5)
+    informative_path.run()
+    
+    # Assuming you want to visualize the results as in other scenarios
+    Z_pred, std = scenario.predict_spatial_field(np.array(informative_path.obs_wp), scenario.simulate_measurements(informative_path.obs_wp))
+    Z_true = scenario.ground_truth()
+    
+    RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
+    print("RMSE: ", RMSE)
+    RMSE_list_informative[scenario_number - 1].append(RMSE)
+    if final:
+        helper_plot(scenario, scenario_number, Z_true, Z_pred, std, informative_path, RMSE_list_informative[scenario_number - 1])
 
 if __name__ == '__main__':
     for i in range(ROUNDS):
-        print("Run ", i)
+        print("Run ", i)    
         for j, scenario in enumerate(scenarios, start=1):
             if i == ROUNDS - 1:
                 run_Boustrophedon_scenario(scenario, j, True)
+                run_Random_Scenario(scenario, j, True)
+                run_Informative_Scenario(scenario, j, True)
             else:
                 run_Boustrophedon_scenario(scenario, j, False)
+                run_Random_Scenario(scenario, j, False)
+                run_Informative_Scenario(scenario, j, False)
 
     

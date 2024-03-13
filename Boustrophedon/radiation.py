@@ -107,4 +107,4 @@ class RadiationField:
         # convert Z_pred back to base 10
         Z_pred = 10**Z_pred
         return Z_pred, std
-    
+

@@ -62,8 +62,8 @@ def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, current_waypoint
     # make the background the colour of the lowest contour level
     axs[1][0].set_facecolor('pink')
 
-    # plt.show()
-    plt.savefig(f'../images/scenario_new_{scenario_number}_comparison.png')
+    plt.show()
+    # plt.savefig(f'../images/scenario_new_{scenario_number}_comparison' + str(len(current_waypoints)) + '.png')
     plt.close()
     print("Tested waypoints: ", len(current_waypoints), " for scenario ", scenario_number)
 

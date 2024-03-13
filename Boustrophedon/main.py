@@ -19,8 +19,11 @@ scenarios = [
 # set the source to 20 20 and intensity to 100000
 scenarios[0].update_source(0, 20, 20, 100000)
 
-def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, current_waypoints, nominal_path):
-    # Determine log scale levels
+# Iniatilize a RMSE list of lists
+RMSE_list =  [[] for _ in range(len(scenarios))]
+
+def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, current_waypoints, nominal_path, RMSE_list):
+    # Determine log scale levels,
     if Z_true.max() == 0:
         max_log_value = 1
     else:
@@ -62,13 +65,23 @@ def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, current_waypoint
     # make the background the colour of the lowest contour level
     axs[1][0].set_facecolor('pink')
 
-    # plt.show()
-    plt.savefig(f'../images/scenario_full_{scenario_number}_comparison.png')
+    # Plot RMSE as vertical y with median as a dot and std as error bars
+    # x label is just the scenario number and title is 10 run average RMSE
+    # Only one x label for each scenario
+    axs[1][1].errorbar(scenario_number, np.mean(RMSE_list), yerr=np.std(RMSE_list), fmt='o', linewidth=2, capsize=6)
+    axs[1][1].set_title('5 run average RMSE')
+    axs[1][1].set_xlabel('Scenario' + str(scenario_number))
+    # only show one tick for the x axis
+    axs[1][1].set_xticks([scenario_number])
+    axs[1][1].set_ylabel('RMSE')
+
+    plt.savefig(f'../images/scenario_full_RMSE_{scenario_number}_comparison_high_error.png')
+    plt.show()
     plt.close()
     print("Tested waypoints: ", len(current_waypoints), " for scenario ", scenario_number)
 
 
-def run_scenario(scenario, scenario_number):
+def run_scenario(scenario, scenario_number, final = False):
     ipp = InformativePathPlanning(workspace_size=(40, 40), n_waypoints=200, distance_budget=2000)
     ipp.Boustrophedon()
     nominal_path = ipp.nominal_path
@@ -76,11 +89,27 @@ def run_scenario(scenario, scenario_number):
     measurements = scenario.simulate_measurements(waypoints)
     Z_pred, std = scenario.predict_spatial_field(waypoints, measurements)
     Z_true = scenario.ground_truth()
-    helper_plot(scenario, scenario_number, Z_true, Z_pred, std, waypoints, nominal_path)
+    # add RMSE 
+    RMSE = np.sqrt(1 / Z_true.size * np.sum((Z_true - Z_pred)**2))
+    # Normalize the RMSE between 0 and 1
+    RMSE = RMSE / (Z_true.max() - Z_true.min())
+    print("RMSE: ", RMSE)
+    RMSE_list[scenario_number - 1].append(RMSE)
+    if final:
+        helper_plot(scenario, scenario_number, Z_true, Z_pred, 
+                    std, waypoints, nominal_path, RMSE_list[scenario_number - 1])
 
 
 
 if __name__ == '__main__':
-    # Run each scenario
-    for i, scenario in enumerate(scenarios, start=1):
-        run_scenario(scenario, i)
+    # Run each scenario 10 times in the final pass final = True
+    ROUNDS = 5
+    for i in range(ROUNDS):
+        print("Run ", i)
+        for j, scenario in enumerate(scenarios, start=1):
+            if i == ROUNDS - 1:
+                run_scenario(scenario, j, True)
+            else:
+                run_scenario(scenario, j, False)
+
+    

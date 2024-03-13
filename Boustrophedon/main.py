@@ -87,17 +87,12 @@ def run_Boustrophedon_scenario(scenario, scenario_number, final = False):
     Z_true = scenario.ground_truth()
 
     # add RMSE 
-    RMSE = np.sqrt(1 / Z_true.size * np.sum((Z_true - Z_pred)**2))
-
-    # Normalize the RMSE between 0 and 1
-    RMSE = RMSE / (Z_true.max() - Z_true.min())
-    # print("RMSE: ", RMSE)
+    RMSE = np.sqrt(1 / Z_true.size * np.sum((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
+    print("RMSE: ", RMSE)
     RMSE_list[scenario_number - 1].append(RMSE)
     if final:
         helper_plot(scenario, scenario_number, Z_true, Z_pred, 
                     std, boust, RMSE_list[scenario_number - 1])
-
-
 
 if __name__ == '__main__':
     for i in range(ROUNDS):

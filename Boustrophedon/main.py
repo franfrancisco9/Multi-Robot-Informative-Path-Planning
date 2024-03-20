@@ -10,20 +10,21 @@ from informative import InformativePathPlanning
 # Initialize the scenarios
 scenarios = [
     # RadiationField(num_sources=0, workspace_size=(40, 40)),
-    RadiationField(num_sources=1, workspace_size=(40, 40)),
-    RadiationField(num_sources=2, workspace_size=(40, 40)),
-    RadiationField(num_sources=7, workspace_size=(40, 40))
+    RadiationField(num_sources=1, workspace_size=(40, 40), seed=42),
+    RadiationField(num_sources=2, workspace_size=(40, 40), seed=42),
+    RadiationField(num_sources=7, workspace_size=(40, 40), seed=42),
 ]
 
 # set the source to 20 20 and intensity to 100000
 scenarios[0].update_source(0, 20, 20, 100000)
+
 
 # Iniatilize a RMSE list of lists
 RMSE_list_boust =  [[] for _ in range(len(scenarios))]
 RMSE_list_random = [[] for _ in range(len(scenarios))]
 RMSE_list_informative = [[] for _ in range(len(scenarios))]
 
-ROUNDS = 5
+ROUNDS = 1
 
 def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, path, RMSE_list):
     # Determine log scale levels,
@@ -78,8 +79,8 @@ def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, path, RMSE_list)
     axs[1][1].set_xticks([scenario_number])
     axs[1][1].set_ylabel('RMSE')
 
-    plt.savefig(f'../images/scenario_{scenario_number}_run_{ROUNDS}_path_{path.name}.png')
-    plt.show()
+    plt.savefig(f'../images/scenario_{scenario_number}_run_{ROUNDS}_path_{path.name}_beta_500.png')
+    # plt.show()
     plt.close()
     print("Tested waypoints: ", len(path.obs_wp), " for scenario ", scenario_number)
 
@@ -114,10 +115,10 @@ def run_Random_Scenario(scenario, scenario_number, final=False):
 
 def run_Informative_Scenario(scenario, scenario_number, final=False):
     informative_path = InformativePathPlanning(scenario, n_waypoints=200, d_waypoint_distance=2.5)
-    informative_path.run()
+    Z_pred, std = informative_path.run()
     
     # Assuming you want to visualize the results as in other scenarios
-    Z_pred, std = scenario.predict_spatial_field(np.array(informative_path.obs_wp), scenario.simulate_measurements(informative_path.obs_wp))
+    # Z_pred, std = scenario.predict_spatial_field(np.array(informative_path.obs_wp), scenario.simulate_measurements(informative_path.obs_wp))
     Z_true = scenario.ground_truth()
     
     RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
@@ -131,12 +132,12 @@ if __name__ == '__main__':
         print("Run ", i)    
         for j, scenario in enumerate(scenarios, start=1):
             if i == ROUNDS - 1:
-                run_Boustrophedon_scenario(scenario, j, True)
-                run_Random_Scenario(scenario, j, True)
+                # run_Boustrophedon_scenario(scenario, j, True)
+                # run_Random_Scenario(scenario, j, True)
                 run_Informative_Scenario(scenario, j, True)
             else:
-                run_Boustrophedon_scenario(scenario, j, False)
-                run_Random_Scenario(scenario, j, False)
+                # run_Boustrophedon_scenario(scenario, j, False)
+                # run_Random_Scenario(scenario, j, False)
                 run_Informative_Scenario(scenario, j, False)
 
     

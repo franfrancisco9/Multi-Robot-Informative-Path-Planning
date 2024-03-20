@@ -6,6 +6,7 @@ from boustrophedon import Boustrophedon
 from radiation import RadiationField
 from randomwalker import RandomWalker 
 from informative import InformativePathPlanning
+from RRT import InformativeRRTPathPlanning, BetaInformativeRRTPathPlanning
 
 # Initialize the scenarios
 scenarios = [
@@ -23,6 +24,7 @@ scenarios[0].update_source(0, 20, 20, 100000)
 RMSE_list_boust =  [[] for _ in range(len(scenarios))]
 RMSE_list_random = [[] for _ in range(len(scenarios))]
 RMSE_list_informative = [[] for _ in range(len(scenarios))]
+RMSE_list_RRT = [[] for _ in range(len(scenarios))]
 
 ROUNDS = 1
 
@@ -54,6 +56,7 @@ def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, path, RMSE_list)
     x_new, y_new = path.full_path
     axs[0][1].plot(x_new, y_new, 'b-', label=path.name + ' Path')
     # add the waypoints with red circles
+    # print(path.obs_wp)
     axs[0][1].plot(path.obs_wp[:, 0], path.obs_wp[:, 1], 'ro', markersize=5)  # Waypoints
     # make the background the colour of the lowest contour level
     axs[0][1].set_facecolor(cmap(0))
@@ -79,8 +82,8 @@ def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, path, RMSE_list)
     axs[1][1].set_xticks([scenario_number])
     axs[1][1].set_ylabel('RMSE')
 
-    plt.savefig(f'../images/scenario_{scenario_number}_run_{ROUNDS}_path_{path.name}_beta_500.png')
-    # plt.show()
+    plt.savefig(f'../images/scenario_{scenario_number}_run_{ROUNDS}_path_{path.name}_beta_50.png')
+    plt.show()
     plt.close()
     print("Tested waypoints: ", len(path.obs_wp), " for scenario ", scenario_number)
 
@@ -127,6 +130,30 @@ def run_Informative_Scenario(scenario, scenario_number, final=False):
     if final:
         helper_plot(scenario, scenario_number, Z_true, Z_pred, std, informative_path, RMSE_list_informative[scenario_number - 1])
 
+def run_InformativeRRT_Scenario(scenario, scenario_number, final=False):
+    rrt_path = InformativeRRTPathPlanning(scenario, n_waypoints=20, d_waypoint_distance=2.5)
+    Z_pred, std = rrt_path.run()
+    
+    Z_true = scenario.ground_truth()
+    RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
+    print("RRT RMSE: ", RMSE)
+    RMSE_list_RRT[scenario_number - 1].append(RMSE)  # Make sure this list is defined
+    
+    if final:
+        helper_plot(scenario, scenario_number, Z_true, Z_pred, std, rrt_path, RMSE_list_RRT[scenario_number - 1])
+
+def run_BetaInformativeRRT_Scenario(scenario, scenario_number, final=False):
+    rrt_path = BetaInformativeRRTPathPlanning(scenario, n_waypoints=40, d_waypoint_distance=2.5, beta_t = 50)
+    Z_pred, std = rrt_path.run()
+    
+    Z_true = scenario.ground_truth()
+    RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
+    print("RRT RMSE: ", RMSE)
+    RMSE_list_RRT[scenario_number - 1].append(RMSE)  # Make sure this list is defined
+    
+    if final:
+        helper_plot(scenario, scenario_number, Z_true, Z_pred, std, rrt_path, RMSE_list_RRT[scenario_number - 1])	
+
 if __name__ == '__main__':
     for i in range(ROUNDS):
         print("Run ", i)    
@@ -134,10 +161,14 @@ if __name__ == '__main__':
             if i == ROUNDS - 1:
                 # run_Boustrophedon_scenario(scenario, j, True)
                 # run_Random_Scenario(scenario, j, True)
-                run_Informative_Scenario(scenario, j, True)
+                # run_Informative_Scenario(scenario, j, True)
+                # run_InformativeRRT_Scenario(scenario, j, True)
+                run_BetaInformativeRRT_Scenario(scenario, j, True)
             else:
                 # run_Boustrophedon_scenario(scenario, j, False)
                 # run_Random_Scenario(scenario, j, False)
-                run_Informative_Scenario(scenario, j, False)
+                # run_Informative_Scenario(scenario, j, False)
+                # run_InformativeRRT_Scenario(scenario, j, False)
+                run_BetaInformativeRRT_Scenario(scenario, j, False)
 
     

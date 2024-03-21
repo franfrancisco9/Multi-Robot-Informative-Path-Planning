@@ -16,8 +16,9 @@ class RadiationField:
         # kernel should be k(r) = sigma**2 * exp(-r / (2 * l**2))
         if kernel_params is None:
             kernel_params = {'sigma': 1, 'l': 1}
-        kernel = C(kernel_params['sigma'], (1, 5))**2 * RBF(kernel_params['l'], (1e-5, 50))
-        self.gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10)
+        kernel = C(kernel_params['sigma'], (1e-5, 5))**2 * RBF(kernel_params['l'], (1e-5, 50))
+        self.gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10, normalize_y=True)
+        self.gp.max_iter_predict = 200000
         if seed is not None:
             np.random.seed(seed)
 

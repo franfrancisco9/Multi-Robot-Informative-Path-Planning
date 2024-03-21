@@ -151,10 +151,10 @@ def run_BiasInformativeRRT_Scenario(scenario, scenario_number, final=False):
     Z_true = scenario.ground_truth()
     RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
     print("RRT RMSE: ", RMSE)
-    RMSE_list_RRT[scenario_number - 1].append(RMSE)  # Make sure this list is defined
+    RMSE_list_RRT_BIAS[scenario_number - 1].append(RMSE)  # Make sure this list is defined
     
     if final:
-        helper_plot(scenario, scenario_number, Z_true, Z_pred, std, rrt_path, RMSE_list_RRT[scenario_number - 1])
+        helper_plot(scenario, scenario_number, Z_true, Z_pred, std, rrt_path, RMSE_list_RRT_BIAS[scenario_number - 1])
 
 def run_BetaInformativeRRT_Scenario(scenario, scenario_number, final=False):
     rrt_path = BetaInformativeRRTPathPlanning(scenario, n_waypoints=40, d_waypoint_distance=2.5, beta_t = 50)
@@ -163,10 +163,10 @@ def run_BetaInformativeRRT_Scenario(scenario, scenario_number, final=False):
     Z_true = scenario.ground_truth()
     RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
     print("RRT RMSE: ", RMSE)
-    RMSE_list_RRT[scenario_number - 1].append(RMSE)  # Make sure this list is defined
+    RMSE_list_RRT_BETA[scenario_number - 1].append(RMSE)  # Make sure this list is defined
     
     if final:
-        helper_plot(scenario, scenario_number, Z_true, Z_pred, std, rrt_path, RMSE_list_RRT[scenario_number - 1])	
+        helper_plot(scenario, scenario_number, Z_true, Z_pred, std, rrt_path, RMSE_list_RRT_BETA[scenario_number - 1])	
 
 if __name__ == '__main__':
     for i in range(ROUNDS):

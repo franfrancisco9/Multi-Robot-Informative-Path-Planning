@@ -29,6 +29,8 @@ class InformativeRRTPathPlanning(InformativePathPlanning):
                 new_measurement = self.scenario.simulate_measurements(np.array([new_point]))[0]
                 self.observations.append(new_measurement)
                 self.obs_wp.append(new_point.tolist())
+        self.obs_wp = np.array(self.obs_wp)
+        self.full_path = self.obs_wp.reshape(-1, 2).T
 
     def run(self):
         self.initialize_tree()

@@ -5,6 +5,43 @@ from informative import InformativePathPlanning
 class InformativeRRTPathPlanning(InformativePathPlanning):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.name = "InformativeRRTPath"
+
+    def initialize_tree(self):
+        initial_position = np.array([[np.random.uniform(0, self.scenario.workspace_size[0]), 
+                                      np.random.uniform(0, self.scenario.workspace_size[1])]])  # Random start
+        self.tree = KDTree(initial_position)
+        self.obs_wp = initial_position.tolist()
+        initial_measurement = self.scenario.simulate_measurements(initial_position)[0]
+        self.observations = [initial_measurement]
+
+    def expand_tree(self):
+        for _ in range(self.n_waypoints - 1):
+            random_point = np.random.rand(2) * self.scenario.workspace_size
+            nearest_idx = self.tree.query([random_point], k=1)[1][0]
+            nearest_point = self.tree.data[nearest_idx]
+
+            direction = random_point - nearest_point
+            direction /= np.linalg.norm(direction)
+            new_point = nearest_point + direction * self.d_waypoint_distance
+            if np.all(new_point >= 0) and np.all(new_point <= self.scenario.workspace_size):
+                self.tree = KDTree(np.vstack([self.tree.data, new_point]))  # Update tree
+                new_measurement = self.scenario.simulate_measurements(np.array([new_point]))[0]
+                self.observations.append(new_measurement)
+                self.obs_wp.append(new_point.tolist())
+
+    def run(self):
+        self.initialize_tree()
+        self.expand_tree()
+        unique_positions = np.array(self.obs_wp)
+        measurements = np.array(self.observations)
+        self.scenario.gp.fit(unique_positions, np.log10(measurements))
+        Z_pred, std = self.scenario.predict_spatial_field(unique_positions, measurements)
+        return Z_pred, std
+
+class BiasInformativeRRTPathPlanning(InformativePathPlanning):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.tree = None
         self.name = "EnhancedInformativeRRTPath"
     

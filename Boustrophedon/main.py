@@ -6,7 +6,7 @@ from boustrophedon import Boustrophedon
 from radiation import RadiationField
 from randomwalker import RandomWalker 
 from informative import InformativePathPlanning
-from RRT import InformativeRRTPathPlanning, BetaInformativeRRTPathPlanning
+from RRT import InformativeRRTPathPlanning, BetaInformativeRRTPathPlanning, BiasInformativeRRTPathPlanning
 
 # Initialize the scenarios
 scenarios = [
@@ -25,8 +25,10 @@ RMSE_list_boust =  [[] for _ in range(len(scenarios))]
 RMSE_list_random = [[] for _ in range(len(scenarios))]
 RMSE_list_informative = [[] for _ in range(len(scenarios))]
 RMSE_list_RRT = [[] for _ in range(len(scenarios))]
-
-ROUNDS = 1
+RMSE_list_RRT_BIAS = [[] for _ in range(len(scenarios))]
+RMSE_list_RRT_BETA = [[] for _ in range(len(scenarios))]
+# Number of rounds to run
+ROUNDS = 3
 
 def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, path, RMSE_list):
     # Determine log scale levels,
@@ -82,8 +84,8 @@ def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, path, RMSE_list)
     axs[1][1].set_xticks([scenario_number])
     axs[1][1].set_ylabel('RMSE')
 
-    plt.savefig(f'../images/scenario_{scenario_number}_run_{ROUNDS}_path_{path.name}_beta_50.png')
-    plt.show()
+    plt.savefig(f'../images/scenario_{scenario_number}_run_{ROUNDS}_path_{path.name}.png')
+    # plt.show()
     plt.close()
     print("Tested waypoints: ", len(path.obs_wp), " for scenario ", scenario_number)
 
@@ -131,7 +133,19 @@ def run_Informative_Scenario(scenario, scenario_number, final=False):
         helper_plot(scenario, scenario_number, Z_true, Z_pred, std, informative_path, RMSE_list_informative[scenario_number - 1])
 
 def run_InformativeRRT_Scenario(scenario, scenario_number, final=False):
-    rrt_path = InformativeRRTPathPlanning(scenario, n_waypoints=20, d_waypoint_distance=2.5)
+    rrt_path = InformativeRRTPathPlanning(scenario, n_waypoints=20, d_waypoint_distance=2.5, beta_t = 50)
+    Z_pred, std = rrt_path.run()
+    
+    Z_true = scenario.ground_truth()
+    RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
+    print("RRT RMSE: ", RMSE)
+    RMSE_list_RRT[scenario_number - 1].append(RMSE)  # Make sure this list is defined
+    
+    if final:
+        helper_plot(scenario, scenario_number, Z_true, Z_pred, std, rrt_path, RMSE_list_RRT[scenario_number - 1])
+
+def run_BiasInformativeRRT_Scenario(scenario, scenario_number, final=False):
+    rrt_path = BiasInformativeRRTPathPlanning(scenario, n_waypoints=20, d_waypoint_distance=2.5, beta_t = 50)
     Z_pred, std = rrt_path.run()
     
     Z_true = scenario.ground_truth()
@@ -159,16 +173,18 @@ if __name__ == '__main__':
         print("Run ", i)    
         for j, scenario in enumerate(scenarios, start=1):
             if i == ROUNDS - 1:
-                # run_Boustrophedon_scenario(scenario, j, True)
-                # run_Random_Scenario(scenario, j, True)
-                # run_Informative_Scenario(scenario, j, True)
-                # run_InformativeRRT_Scenario(scenario, j, True)
+                run_Boustrophedon_scenario(scenario, j, True)
+                run_Random_Scenario(scenario, j, True)
+                run_Informative_Scenario(scenario, j, True)
+                run_InformativeRRT_Scenario(scenario, j, True)
+                run_BiasInformativeRRT_Scenario(scenario, j, True)
                 run_BetaInformativeRRT_Scenario(scenario, j, True)
             else:
-                # run_Boustrophedon_scenario(scenario, j, False)
-                # run_Random_Scenario(scenario, j, False)
-                # run_Informative_Scenario(scenario, j, False)
-                # run_InformativeRRT_Scenario(scenario, j, False)
+                run_Boustrophedon_scenario(scenario, j, False)
+                run_Random_Scenario(scenario, j, False)
+                run_Informative_Scenario(scenario, j, False)
+                run_InformativeRRT_Scenario(scenario, j, False)
+                run_BiasInformativeRRT_Scenario(scenario, j, False)
                 run_BetaInformativeRRT_Scenario(scenario, j, False)
 
     

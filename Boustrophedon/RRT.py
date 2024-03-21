@@ -8,8 +8,7 @@ class InformativeRRTPathPlanning(InformativePathPlanning):
         self.name = "InformativeRRTPath"
 
     def initialize_tree(self):
-        initial_position = np.array([[np.random.uniform(0, self.scenario.workspace_size[0]), 
-                                      np.random.uniform(0, self.scenario.workspace_size[1])]])  # Random start
+        initial_position = np.array([[0, 0]])  # Starting position
         self.tree = KDTree(initial_position)
         self.obs_wp = initial_position.tolist()
         initial_measurement = self.scenario.simulate_measurements(initial_position)[0]

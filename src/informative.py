@@ -76,7 +76,7 @@ class InformativePathPlanning:
     def run(self):
         self.generate_path()
         # measurements = self.scenario.simulate_measurements(np.array(self.obs_wp))
-        self.scenario.gp.fit(np.array(self.obs_wp), np.log10(self.observations ))  # Assuming log10 scale for compatibility
+        # self.scenario.gp.fit(np.array(self.obs_wp), np.log10(self.observations ))  # Assuming log10 scale for compatibility
         Z_pred, std = self.scenario.predict_spatial_field(np.array(self.obs_wp), self.observations)
         
         return Z_pred, std

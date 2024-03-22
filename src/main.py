@@ -1,4 +1,5 @@
 import numpy as np
+import argparse
 import matplotlib.pyplot as plt
 from matplotlib import ticker, colors
 
@@ -9,6 +10,19 @@ from informative import InformativePathPlanning
 from RRT import InformativeRRTPathPlanning, BetaInformativeRRTPathPlanning, BiasInformativeRRTPathPlanning
 
 from path_planning_utils import helper_plot
+
+
+# Create an argument parser
+parser = argparse.ArgumentParser(description="Run path planning scenarios.")
+parser.add_argument('-r', '--rounds', type=int, default=1, help='Number of rounds to run (default: 1).')
+parser.add_argument('-save', action='store_true', help='Save the results if this flag is set.')
+
+# Parse arguments
+args = parser.parse_args()
+
+# Set the number of rounds and save flag based on parsed arguments
+ROUNDS = args.rounds
+save = args.save
 
 # Initialize the scenarios
 scenarios = [
@@ -29,8 +43,7 @@ RMSE_list_informative = [[] for _ in range(len(scenarios))]
 RMSE_list_RRT = [[] for _ in range(len(scenarios))]
 RMSE_list_RRT_BIAS = [[] for _ in range(len(scenarios))]
 RMSE_list_RRT_BETA = [[] for _ in range(len(scenarios))]
-# Number of rounds to run
-ROUNDS = 3
+
 
 def run_Boustrophedon_scenario(scenario, scenario_number, final = False):
     boust = Boustrophedon(d_waypoint_distance=2.5)
@@ -113,21 +126,29 @@ def run_BetaInformativeRRT_Scenario(scenario, scenario_number, final=False):
 
 if __name__ == '__main__':
     for i in range(ROUNDS):
-        print("Run ", i)    
+        print(f"Run {i+1}/{ROUNDS}")
         for j, scenario in enumerate(scenarios, start=1):
-            if i == ROUNDS - 1:
-                run_Boustrophedon_scenario(scenario, j, True)
-                run_Random_Scenario(scenario, j, True)
-                run_Informative_Scenario(scenario, j, True)
-                run_InformativeRRT_Scenario(scenario, j, True)
-                run_BiasInformativeRRT_Scenario(scenario, j, True)
-                run_BetaInformativeRRT_Scenario(scenario, j, True)
-            else:
-                run_Boustrophedon_scenario(scenario, j, False)
-                run_Random_Scenario(scenario, j, False)
-                run_Informative_Scenario(scenario, j, False)
-                run_InformativeRRT_Scenario(scenario, j, False)
-                run_BiasInformativeRRT_Scenario(scenario, j, False)
-                run_BetaInformativeRRT_Scenario(scenario, j, False)
+            final = (i == ROUNDS - 1) and save
+            print("##############################################")
+            print(f"Scenario {j}/{len(scenarios)}")
+            print("Radiation Field: ", scenario.sources)
+            print("##############################################")
+            print("Run Boustrophedon")
+            run_Boustrophedon_scenario(scenario, j, final)
+            print("##############################################")
+            # print("Run Random")
+            # run_Random_Scenario(scenario, j, final)
+            # print("##############################################")
+            print("Run Informative")
+            run_Informative_Scenario(scenario, j, final)
+            print("##############################################")
+            print("Run Informative RRT")
+            run_InformativeRRT_Scenario(scenario, j, final)
+            print("##############################################")
+            print("Run Bias Informative RRT")
+            run_BiasInformativeRRT_Scenario(scenario, j, final)
+            print("##############################################")
+            print("Run Beta Informative RRT")
+            run_BetaInformativeRRT_Scenario(scenario, j, final)
 
     

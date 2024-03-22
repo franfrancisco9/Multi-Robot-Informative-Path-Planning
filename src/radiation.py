@@ -2,6 +2,11 @@ import numpy as np
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C
 
+# remove convergence warning from sklearn
+import warnings
+from sklearn.exceptions import ConvergenceWarning
+warnings.filterwarnings("ignore", category=ConvergenceWarning)
+
 class RadiationField:
     def __init__(self, num_sources=1, workspace_size=(40, 40), intensity_range=(10000, 100000), kernel_params=None, seed= None):
         self.sources = self.generate_sources(num_sources, workspace_size, intensity_range)
@@ -18,7 +23,7 @@ class RadiationField:
             kernel_params = {'sigma': 1, 'l': 1}
         kernel = C(kernel_params['sigma'], (1e-5, 5))**2 * RBF(kernel_params['l'], (1e-5, 50))
         self.gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10, normalize_y=True)
-        self.gp.max_iter_predict = 200000
+        self.gp.max_iter = 100
         if seed is not None:
             np.random.seed(seed)
 

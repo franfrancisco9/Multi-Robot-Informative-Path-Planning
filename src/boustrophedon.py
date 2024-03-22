@@ -2,43 +2,56 @@ import numpy as np
 from bspline import bspline
 
 class Boustrophedon:
-    def __init__(self, d_waypoint_distance=2.5):
+    def __init__(self, workspace_size=(40, 40), d_waypoint_distance=2.5, budget=1650):
+        """
+        Initializes a Boustrophedon path planner.
+
+        Parameters:
+        - workspace_size: Tuple indicating the size of the workspace.
+        - d_waypoint_distance: Desired distance between waypoints.
+        - budget: The total distance budget available for the path.
+        """
+        self.workspace_size = workspace_size
+        self.d_waypoint_distance = d_waypoint_distance
+        self.budget = budget
         self.full_path = None
         self.obs_wp = None
         self.name = "Boustrophedon"
-        self.Boustrophedon(d_waypoint_distance)
+        self.generate_path()
 
-    def Boustrophedon(self, d_waypoint_distance):
-        cv = np.array([
-                [ 0.5,  0.5],
-                [ 0.5, 39.5],
-                [ 5.,  39.5],
-                [ 5.,  0.5],
-                [ 10.,  0.5],
-                [ 10., 39.5],
-                [ 15., 39.5],
-                [ 15.,  0.5],
-                [ 20.,  0.5],
-                [ 20., 39.5],
-                [ 25., 39.5],
-                [ 25.,  0.5],
-                [ 30.,  0.5],
-                [ 30., 39.5],
-                [ 35., 39.5],
-                [ 35.,  0.5],
-                [ 39.5,  0.5],
-                [ 39.5, 39.5]
-                ])
-        d = 2
-        p = bspline(cv,n=1000,degree=d)
-        p_way = [p[0]]
+    def generate_path(self):
+        """
+        Generates a Boustrophedon path within a specified distance budget.
+        """
+        x_coords = np.arange(0.5, self.workspace_size[0], 5)
+        if x_coords[-1] + 0.5 != self.workspace_size[0]:
+            x_coords = np.append(x_coords, self.workspace_size[0] - 0.5)
+        
+        y_up = self.workspace_size[1] - 0.5
+        y_down = 0.5
+
+        cv = []
+        for i, x in enumerate(x_coords):
+            cv.append([x, y_down if i % 2 == 0 else y_up])
+            cv.append([x, y_up if i % 2 == 0 else y_down])
+
+        cv = np.array(cv)
+        p = bspline(cv, n=1000, degree=2)
+
+        # Select waypoints based on budget and desired distance between them
+        self.obs_wp = [p[0]]
+        distance_covered = 0.0
+        
         for i in range(1, len(p)):
-            if np.linalg.norm(p[i] - p_way[-1]) > d_waypoint_distance:
-                p_way.append(p[i])
-        p_way = np.array(p_way)
-        self.full_path = p.T
-        self.obs_wp = p_way
+            segment_length = np.linalg.norm(p[i] - self.obs_wp[-1])
+            if distance_covered + segment_length > self.budget:
+                break  # Stop if adding this segment would exceed the budget
+           
+            if segment_length >= self.d_waypoint_distance:
+                self.obs_wp.append(p[i])
 
+            distance_covered += segment_length
 
-
-
+        print("Distance covered: ", distance_covered)
+        self.obs_wp = np.array(self.obs_wp)
+        self.full_path = p[:i+1].T

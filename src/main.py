@@ -27,9 +27,9 @@ save = args.save
 # Initialize the scenarios
 scenarios = [
     # RadiationField(num_sources=0, workspace_size=(40, 40)),
-    RadiationField(num_sources=1, workspace_size=(40, 40), seed=42),
-    RadiationField(num_sources=2, workspace_size=(40, 40), seed=42),
-    RadiationField(num_sources=7, workspace_size=(40, 40), seed=42),
+    RadiationField(num_sources=1, workspace_size=(40, 40), seed=95789),
+    # RadiationField(num_sources=2, workspace_size=(40, 40), seed=95789),
+    # RadiationField(num_sources=7, workspace_size=(40, 40), seed=95789),
 ]
 
 # set the source to 20 20 and intensity to 100000
@@ -46,7 +46,7 @@ RMSE_list_RRT_BETA = [[] for _ in range(len(scenarios))]
 
 
 def run_Boustrophedon_scenario(scenario, scenario_number, final = False):
-    boust = Boustrophedon(d_waypoint_distance=2.5)
+    boust = Boustrophedon(d_waypoint_distance=2.5, budget=1650)
 
     measurements = scenario.simulate_measurements(boust.obs_wp)
     Z_pred, std = scenario.predict_spatial_field(boust.obs_wp, measurements)
@@ -75,7 +75,7 @@ def run_Random_Scenario(scenario, scenario_number, final=False):
         helper_plot(scenario, scenario_number, Z_true, Z_pred, std, random_walker, RMSE_list_random[scenario_number - 1], ROUNDS)
 
 def run_Informative_Scenario(scenario, scenario_number, final=False):
-    informative_path = InformativePathPlanning(scenario, n_waypoints=200, d_waypoint_distance=2.5)
+    informative_path = InformativePathPlanning(scenario, beta_t=500, d_waypoint_distance=2.5, budget=1650)
     Z_pred, std = informative_path.run()
     
     # Assuming you want to visualize the results as in other scenarios
@@ -133,22 +133,22 @@ if __name__ == '__main__':
             print(f"Scenario {j}/{len(scenarios)}")
             print("Radiation Field: ", scenario.sources)
             print("##############################################")
-            print("Run Boustrophedon")
-            run_Boustrophedon_scenario(scenario, j, final)
-            print("##############################################")
+            # print("Run Boustrophedon")
+            # run_Boustrophedon_scenario(scenario, j, final)
+            # print("##############################################")
             # print("Run Random")
             # run_Random_Scenario(scenario, j, final)
             # print("##############################################")
             print("Run Informative")
             run_Informative_Scenario(scenario, j, final)
             print("##############################################")
-            print("Run Informative RRT")
-            run_InformativeRRT_Scenario(scenario, j, final)
-            print("##############################################")
-            print("Run Bias Informative RRT")
-            run_BiasInformativeRRT_Scenario(scenario, j, final)
-            print("##############################################")
-            print("Run Beta Informative RRT")
-            run_BetaInformativeRRT_Scenario(scenario, j, final)
+            # print("Run Informative RRT")
+            # run_InformativeRRT_Scenario(scenario, j, final)
+            # print("##############################################")
+            # print("Run Bias Informative RRT")
+            # run_BiasInformativeRRT_Scenario(scenario, j, final)
+            # print("##############################################")
+            # print("Run Beta Informative RRT")
+            # run_BetaInformativeRRT_Scenario(scenario, j, final)
 
     

@@ -59,8 +59,8 @@ def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, path, RMSE_list,
     axs[1][1].set_xticks([scenario_number])
     axs[1][1].set_ylabel('RMSE')
 
-    plt.savefig(f'../images/scenario_{scenario_number}_run_{ROUNDS}_path_{path.name}.png')
-    # plt.show()
+    # plt.savefig(f'../images/scenario_{scenario_number}_run_{ROUNDS}_path_{path.name}.png')
+    plt.show()
     plt.close()
 
 

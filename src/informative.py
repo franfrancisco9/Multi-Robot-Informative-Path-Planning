@@ -1,7 +1,7 @@
 import numpy as np
 
 class InformativePathPlanning:
-    def __init__(self, scenario, lambda_param=1.0, beta_t=500.0, n_waypoints=200, d_waypoint_distance=2.5):
+    def __init__(self, scenario, lambda_param=1.0, beta_t=500.0, n_waypoints=150, d_waypoint_distance=2.5, budget=1650):
         self.scenario = scenario
         self.lambda_param = lambda_param
         self.beta_t = beta_t

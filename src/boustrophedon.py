@@ -2,7 +2,7 @@ import numpy as np
 from bspline import bspline
 
 class Boustrophedon:
-    def __init__(self, workspace_size=(40, 40), d_waypoint_distance=2.5, budget=1650):
+    def __init__(self, workspace_size=(40, 40), d_waypoint_distance=2.5, budget=375):
         """
         Initializes a Boustrophedon path planner.
 
@@ -44,13 +44,14 @@ class Boustrophedon:
         
         for i in range(1, len(p)):
             segment_length = np.linalg.norm(p[i] - self.obs_wp[-1])
-            if distance_covered + segment_length > self.budget:
+            dist = np.linalg.norm(p[i] - p[i-1])
+            if distance_covered + dist > self.budget:
                 break  # Stop if adding this segment would exceed the budget
            
             if segment_length >= self.d_waypoint_distance:
                 self.obs_wp.append(p[i])
-
-            distance_covered += segment_length
+            
+            distance_covered += dist
 
         print("Distance covered: ", distance_covered)
         self.obs_wp = np.array(self.obs_wp)

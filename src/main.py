@@ -46,7 +46,7 @@ RMSE_list_RRT_BETA = [[] for _ in range(len(scenarios))]
 
 
 def run_Boustrophedon_scenario(scenario, scenario_number, final = False):
-    boust = Boustrophedon(d_waypoint_distance=2.5, budget=1650)
+    boust = Boustrophedon(d_waypoint_distance=2.5, budget=375)
 
     measurements = scenario.simulate_measurements(boust.obs_wp)
     Z_pred, std = scenario.predict_spatial_field(boust.obs_wp, measurements)
@@ -75,7 +75,7 @@ def run_Random_Scenario(scenario, scenario_number, final=False):
         helper_plot(scenario, scenario_number, Z_true, Z_pred, std, random_walker, RMSE_list_random[scenario_number - 1], ROUNDS)
 
 def run_Informative_Scenario(scenario, scenario_number, final=False):
-    informative_path = InformativePathPlanning(scenario, beta_t=500, d_waypoint_distance=2.5, budget=1650)
+    informative_path = InformativePathPlanning(scenario, beta_t=500, d_waypoint_distance=2.5, budget=375)
     Z_pred, std = informative_path.run()
     
     # Assuming you want to visualize the results as in other scenarios

@@ -1,11 +1,11 @@
 import numpy as np
 
 class InformativePathPlanning:
-    def __init__(self, scenario, lambda_param=1.0, beta_t=500.0, n_waypoints=150, d_waypoint_distance=2.5, budget=1650):
+    def __init__(self, scenario, lambda_param=1.0, beta_t=500.0, budget=375, d_waypoint_distance=2.5):
         self.scenario = scenario
         self.lambda_param = lambda_param
         self.beta_t = beta_t
-        self.n_waypoints = n_waypoints
+        self.budget = budget
         self.d_waypoint_distance = d_waypoint_distance
         self.observations = None
         self.obs_wp = []  # Initialize an empty list for observed waypoints
@@ -43,11 +43,13 @@ class InformativePathPlanning:
     
     def generate_path(self):
         # Start from a random position within the workspace
-        current_position = np.array([0, 0])
+        current_position = np.array([0.5, 0.5])
         self.obs_wp.append(current_position)
         self.observations  = self.scenario.simulate_measurements(np.array([current_position]))
         self.scenario.gp.fit(np.array([current_position]), np.log10(self.observations))  # Assuming log10 scale for compatibility
-        for _ in range(1, self.n_waypoints):
+        distance_travelled = 0.0
+        i = 0
+        while distance_travelled < self.budget:
             next_point = self.select_next_point(current_position)
             if next_point is None:
                 # go up down left or right (chosen randomly) if it is inside the workspace
@@ -65,9 +67,15 @@ class InformativePathPlanning:
                 elif current_position[0] + self.d_waypoint_distance <= self.scenario.workspace_size[0]:
                     next_point = current_position + np.array([self.d_waypoint_distance, 0])
             self.obs_wp.append(next_point)
+            distance_travelled += np.linalg.norm(next_point - current_position)
+            # print("Distance travelled: ", distance_travelled)
             current_position = next_point
             self.observations = self.scenario.simulate_measurements(np.array(self.obs_wp))
-            self.scenario.gp.fit(np.array(self.obs_wp), np.log10(self.observations))
+            # fit every 50 distance travelled
+            if i % 1 == 0:
+                self.scenario.gp.fit(np.array(self.obs_wp), np.log10(self.observations))
+            # self.scenario.gp.fit(np.array(self.obs_wp), np.log10(self.observations))
+            i += 1
 
         self.obs_wp = np.array(self.obs_wp).reshape(-1, 2)
         self.full_path = np.array(self.obs_wp).reshape(-1, 2).T

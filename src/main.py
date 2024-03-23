@@ -75,7 +75,7 @@ def run_Random_Scenario(scenario, scenario_number, final=False):
         helper_plot(scenario, scenario_number, Z_true, Z_pred, std, random_walker, RMSE_list_random[scenario_number - 1], ROUNDS)
 
 def run_Informative_Scenario(scenario, scenario_number, final=False):
-    informative_path = InformativePathPlanning(scenario, beta_t=500, d_waypoint_distance=2.5, budget=375)
+    informative_path = InformativePathPlanning(scenario, beta_t=50, budget=375, d_waypoint_distance=2.5)
     Z_pred, std = informative_path.run()
     
     # Assuming you want to visualize the results as in other scenarios

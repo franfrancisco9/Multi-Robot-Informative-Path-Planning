@@ -7,7 +7,7 @@ from boustrophedon import Boustrophedon
 from radiation import RadiationField
 from randomwalker import RandomWalker 
 from informative import InformativePathPlanning
-from RRT import InformativeRRTPathPlanning, BetaInformativeRRTPathPlanning, BiasInformativeRRTPathPlanning
+from RRT import RRTPathPlanning, BetaInformativeRRTPathPlanning, BiasInformativeRRTPathPlanning
 
 from path_planning_utils import helper_plot
 
@@ -27,7 +27,7 @@ save = args.save
 # Initialize the scenarios
 scenarios = [
     # RadiationField(num_sources=0, workspace_size=(40, 40)),
-    RadiationField(num_sources=1, workspace_size=(40, 40), seed=95789),
+    RadiationField(num_sources=1, workspace_size=(40, 40), seed=95790),
     # RadiationField(num_sources=2, workspace_size=(40, 40), seed=95789),
     # RadiationField(num_sources=7, workspace_size=(40, 40), seed=95789),
 ]
@@ -88,8 +88,8 @@ def run_Informative_Scenario(scenario, scenario_number, final=False):
     if final:
         helper_plot(scenario, scenario_number, Z_true, Z_pred, std, informative_path, RMSE_list_informative[scenario_number - 1], ROUNDS)
 
-def run_InformativeRRT_Scenario(scenario, scenario_number, final=False):
-    rrt_path = InformativeRRTPathPlanning(scenario, n_waypoints=20, d_waypoint_distance=2.5, beta_t = 50)
+def run_RRT_Scenario(scenario, scenario_number, final=False):
+    rrt_path = RRTPathPlanning(scenario, budget=375, d_waypoint_distance=2.5, beta_t = 50)
     Z_pred, std = rrt_path.run()
     
     Z_true = scenario.ground_truth()
@@ -139,12 +139,12 @@ if __name__ == '__main__':
             # print("Run Random")
             # run_Random_Scenario(scenario, j, final)
             # print("##############################################")
-            print("Run Informative")
-            run_Informative_Scenario(scenario, j, final)
-            print("##############################################")
-            # print("Run Informative RRT")
-            # run_InformativeRRT_Scenario(scenario, j, final)
+            # print("Run Informative")
+            # run_Informative_Scenario(scenario, j, final)
             # print("##############################################")
+            print("Run Informative RRT")
+            run_RRT_Scenario(scenario, j, final)
+            print("##############################################")
             # print("Run Bias Informative RRT")
             # run_BiasInformativeRRT_Scenario(scenario, j, final)
             # print("##############################################")

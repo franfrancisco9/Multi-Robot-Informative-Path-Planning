@@ -39,10 +39,16 @@ class InformativePathPlanning:
 
         mu, sigma = self.scenario.gp.predict(valid_points, return_std=True)
         # normalize the mean and standard deviation
-        mu = np.log10(mu + 1)
-        sigma = np.log10(sigma + 1)
+        if np.std(mu) == 0:
+            mu_normalized = mu
+        else:
+            mu_normalized = (mu - np.mean(mu)) / np.std(mu)
+        if np.std(sigma) == 0:
+            sigma_normalized = sigma
+        else: 
+            sigma_normalized = (sigma - np.mean(sigma)) / np.std(sigma)
         # compute the acquisition function
-        acquisition = mu + self.beta_t * sigma
+        acquisition = mu_normalized + self.beta_t * sigma_normalized
         return valid_points[np.argmax(acquisition)]
     
     def generate_path(self):

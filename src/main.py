@@ -41,9 +41,9 @@ RMSE_lists = {strategy_name: [] for strategy_name in strategy_constructors}
 
 # Run simulations
 with tqdm(total=args.rounds * len(scenarios) * len(strategy_constructors), desc="Overall Progress") as pbar:
-    for round_number in range(1, args.rounds + 1):
-        for scenario_idx, scenario in enumerate(scenarios, start=1):
-            RMSE_lists = {strategy_name: [] for strategy_name in strategy_constructors}
+    for scenario_idx, scenario in enumerate(scenarios, start=1):
+        RMSE_lists = {strategy_name: [] for strategy_name in strategy_constructors}
+        for round_number in range(1, args.rounds + 1):
             for strategy_name, constructor in strategy_constructors.items():
                 strategy = constructor(scenario)
                 tqdm.write(f"Round {round_number}/{args.rounds}, Scenario {scenario_idx}, Strategy: {strategy_name}")

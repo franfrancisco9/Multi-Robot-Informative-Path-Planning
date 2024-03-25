@@ -20,7 +20,7 @@ class InformativePathPlanning:
         self.beta_t = beta_t
         self.budget = budget
         self.d_waypoint_distance = d_waypoint_distance
-        self.observations = {}  # Stores measurement for each waypoint
+        self.observations = []  # Stores measurement for each waypoint
         self.obs_wp = []  # Stores observed waypoints
         self.name = "InformativePath"
         # Precompute the grid to save computation in select_next_point
@@ -75,13 +75,13 @@ class InformativePathPlanning:
         Adds a new waypoint, records its observation, updates the GP model, and returns the total distance travelled.
         """
         measurement = self.scenario.simulate_measurements([point])
-        self.observations[tuple(point)] = measurement  # Using tuple as dict key
+        self.observations.append(measurement)  # Using tuple as dict key
         self.obs_wp.append(point)
         
         # Update GP model conditionally to reduce computation
         if distance_travelled_so_far < self.budget:
-            waypoints = np.array(list(self.observations.keys()))
-            measurements = np.array(list(self.observations.values()))
+            waypoints = np.array(self.obs_wp)
+            measurements = np.array(self.observations)
             self.scenario.gp.fit(waypoints, np.log10(measurements))
 
         if len(self.obs_wp) > 1:
@@ -118,5 +118,5 @@ class InformativePathPlanning:
         self.generate_path()
         self.obs_wp = np.array(self.obs_wp).reshape(-1, 2)
         waypoints = np.array(self.obs_wp)
-        measurements = np.array(list(self.observations.values()))
+        measurements = np.array(self.observations)
         return self.scenario.predict_spatial_field(waypoints, measurements)

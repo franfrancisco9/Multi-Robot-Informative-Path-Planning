@@ -19,11 +19,14 @@ class StrategicRRTPathPlanning(InformativePathPlanning):
         self.current_position = start_position
         self.tree_nodes = [self.root]
 
+    def node_selection_key(self, node, target_point):
+        return np.linalg.norm(node.point - target_point)
+    
     def generate_tree(self, budget_portion):
         distance_travelled = 0
         while distance_travelled < budget_portion:
             random_point = np.random.rand(2) * self.scenario.workspace_size
-            nearest_node = min(self.tree_nodes, key=lambda node: np.linalg.norm(node.point - random_point))
+            nearest_node = min(self.tree_nodes, key=lambda node: self.node_selection_key(node, random_point))
             direction = random_point - nearest_node.point
             norm = np.linalg.norm(direction)
             if norm > 0:
@@ -188,7 +191,6 @@ class BiasBetaRRTPathPlanning(StrategicRRTPathPlanning):
         path.reverse()  # Reverse to start from root
         return path    
 
-
 class AdaptiveRRTPathPlanning(StrategicRRTPathPlanning):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -266,6 +268,19 @@ class AdaptiveRRTPathPlanning(StrategicRRTPathPlanning):
             current_node = current_node.parent
         path.reverse()
         return path
+
+class InformativeRRTPathPlanning(StrategicRRTPathPlanning):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name = "InformativeRRTPath"
+        # Override the node selection strategy
+        self.node_selection_key = self.informative_node_selection_key
+
+    def informative_node_selection_key(self, node, random_point):
+        """Key function for selecting nodes based on predicted mu values."""
+        # This example uses predicted mu values as the key
+        mu = self.scenario.gp.predict(np.array([node.point]))
+        return -mu  # Minimize this key to select the node with the highest mu
 
 class TreeNode:
     def __init__(self, point, parent=None):

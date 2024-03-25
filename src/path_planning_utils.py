@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib import ticker, colors
 
 
-def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, path, RMSE_list, ROUNDS):
+def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, path, RMSE_list, ROUNDS, save=False, show=False):
     # Titles for clarity
     strategy_title = f'{path.name} Strategy - Scenario {scenario_number}'
     # save fig title
@@ -72,8 +72,11 @@ def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, path, RMSE_list,
     axs[1][1].set_xticks([scenario_number])
     axs[1][1].set_ylabel('RMSE')
 
-    plt.savefig(save_fig_title)
-    # plt.show()
+    if show:
+        plt.show()
+    if save:
+        plt.savefig(save_fig_title)
+
     plt.close()
     # Check if path's name contains "RRT"
     if "RRT" in path.name:
@@ -95,8 +98,10 @@ def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, path, RMSE_list,
         axs[1].set_ylabel('Average Uncertainty (std)')
         axs[1].grid(True)
         plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-        plt.savefig(save_fig_title.replace('.png', '_additional.png'))
-        # plt.show()
+        if show:
+            plt.show()
+        if save:
+            plt.savefig(save_fig_title.replace('.png', '_additional.png'))
         plt.close()
 
 def plot_tree_node(node, ax, color='blue'):

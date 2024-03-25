@@ -28,12 +28,13 @@ pip install -r requirements.txt
 ### Running the code
 
 ```bash
-python main.py --rounds [NUMBER_OF_ROUNDS] --beta_t [BETA_T_VALUE] --save
+python main.py -r [NUMBER_OF_ROUNDS] -beta [BETA_T_VALUE] -save -show
 ```
 
 - `NUMBER_OF_ROUNDS`: Number of rounds to run the simulation.
 - `BETA_T_VALUE`: Beta value for the Bias Beta RRT strategy.
-- `--save`: Flag to save the results to a file.
+- `-save`: Flag to save the results to a file.
+- `-show`: Flag to show the results in a plot.
 
 ## Note
 

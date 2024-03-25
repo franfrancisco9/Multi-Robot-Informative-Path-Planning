@@ -5,14 +5,15 @@ from tqdm import tqdm
 from boustrophedon import Boustrophedon
 from radiation import RadiationField
 from informative import InformativePathPlanning
-from RRT import StrategicRRTPathPlanning, NaiveRRTPathPlanning, BiasRRTPathPlanning, BiasBetaRRTPathPlanning, AdaptiveRRTPathPlanning
+from RRT import StrategicRRTPathPlanning, NaiveRRTPathPlanning, BiasRRTPathPlanning, BiasBetaRRTPathPlanning, AdaptiveRRTPathPlanning, InformativeRRTPathPlanning
 from path_planning_utils import helper_plot
 
 # Argument parsing
 parser = argparse.ArgumentParser(description="Run path planning scenarios.")
 parser.add_argument('-r', '--rounds', type=int, default=1, help="Number of rounds to run (default: 1).")
 parser.add_argument('-beta', '--beta_t', type=float, default=1.0, help="Beta parameter for exploration-exploitation trade-off.")
-parser.add_argument('-save', action='store_true', help="Save the results if this flag is set.")
+parser.add_argument('-save', '--save', action='store_true', help="Save the results if this flag is set.")
+parser.add_argument('-show', '--show', action='store_true', help="Show the results if this flag is set.")
 args = parser.parse_args()
 
 # Scenarios initialization
@@ -34,6 +35,8 @@ strategy_constructors = {
     "BiasRRT": lambda scenario: BiasRRTPathPlanning(scenario, beta_t=args.beta_t, budget=375, d_waypoint_distance=2.5),
     "BiasBetaRRT": lambda scenario: BiasBetaRRTPathPlanning(scenario, beta_t=args.beta_t, budget=375, d_waypoint_distance=2.5),
     "AdaRRT": lambda scenario: AdaptiveRRTPathPlanning(scenario, beta_t=args.beta_t, budget=375, d_waypoint_distance=2.5),
+    "InfoRRT": lambda scenario: InformativeRRTPathPlanning(scenario, beta_t=args.beta_t, budget=1000, d_waypoint_distance=2.5),
+
 }
 
 # RMSE lists setup
@@ -53,7 +56,7 @@ with tqdm(total=args.rounds * len(scenarios) * len(strategy_constructors), desc=
                 tqdm.write(f"{strategy_name} RMSE: {RMSE}")
                 RMSE_lists[strategy_name].append(RMSE)
                 # Call helper_plot on the last round if save flag is set
-                if round_number == args.rounds and args.save:
-                    helper_plot(scenario, scenario_idx, Z_true, Z_pred, std, strategy, RMSE_lists[strategy_name], args.rounds)
+                if round_number == args.rounds:
+                    helper_plot(scenario, scenario_idx, Z_true, Z_pred, std, strategy, RMSE_lists[strategy_name], args.rounds, save=args.save, show=args.show)
                 
                 pbar.update(1)

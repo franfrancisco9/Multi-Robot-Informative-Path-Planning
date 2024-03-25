@@ -9,6 +9,8 @@ warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
 class RadiationField:
     def __init__(self, num_sources=1, workspace_size=(40, 40), intensity_range=(10000, 100000), kernel_params=None, seed= None):
+        if seed is not None:
+            np.random.seed(seed)
         self.sources = self.generate_sources(num_sources, workspace_size, intensity_range)
         self.r_s = 0.5  # Source radius
         self.r_d = 0.5  # Detector radius
@@ -24,8 +26,6 @@ class RadiationField:
         kernel = C(kernel_params['sigma'], (1e-5, 5))**2 * RBF(kernel_params['l'], (1e-5, 50))
         self.gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10, normalize_y=True)
         self.gp.max_iter = 100
-        if seed is not None:
-            np.random.seed(seed)
 
     def generate_sources(self, num_sources, workspace_size, intensity_range):
         """Generate random sources within the workspace."""

@@ -69,8 +69,8 @@ def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, path, RMSE_list,
     axs[1][1].set_xticks([scenario_number])
     axs[1][1].set_ylabel('RMSE')
 
-    # plt.savefig(f'../images/17/scenario_{scenario_number}_run_{ROUNDS}_path_{path.name}.png')
-    plt.show()
+    plt.savefig(f'../images/17/scenario_{scenario_number}_run_{ROUNDS}_path_{path.name}.png')
+    # plt.show()
     plt.close()
     # Check if path's name contains "RRT"
     if "RRT" in path.name:
@@ -92,8 +92,8 @@ def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, path, RMSE_list,
         axs[1].set_ylabel('Average Uncertainty (std)')
         axs[1].grid(True)
         plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-        # plt.savefig(f'../images/17/scenario_{scenario_number}_run_{ROUNDS}_path_{path.name}_additional.png')
-        plt.show()
+        plt.savefig(f'../images/17/scenario_{scenario_number}_run_{ROUNDS}_path_{path.name}_additional.png')
+        # plt.show()
         plt.close()
 
 def plot_tree_node(node, ax, color='blue'):

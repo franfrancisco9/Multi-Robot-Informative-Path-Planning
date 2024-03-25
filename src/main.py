@@ -89,7 +89,7 @@ def run_Informative_Scenario(scenario, scenario_number, final=False):
         helper_plot(scenario, scenario_number, Z_true, Z_pred, std, informative_path, RMSE_list_informative[scenario_number - 1], ROUNDS)
 
 def run_RRT_Scenario(scenario, scenario_number, final=False):
-    rrt_path = RRTPathPlanning(scenario, budget=375, d_waypoint_distance=2.5, beta_t = 50)
+    rrt_path = RRTPathPlanning(scenario, budget=375, d_waypoint_distance=1, beta_t = 50)
     Z_pred, std = rrt_path.run()
     
     Z_true = scenario.ground_truth()
@@ -101,7 +101,7 @@ def run_RRT_Scenario(scenario, scenario_number, final=False):
         helper_plot(scenario, scenario_number, Z_true, Z_pred, std, rrt_path, RMSE_list_RRT[scenario_number - 1], ROUNDS)
 
 def run_BiasInformativeRRT_Scenario(scenario, scenario_number, final=False):
-    rrt_path = BiasInformativeRRTPathPlanning(scenario, n_waypoints=20, d_waypoint_distance=2.5, beta_t = 50)
+    rrt_path = BiasInformativeRRTPathPlanning(scenario, budget=10000, d_waypoint_distance=1, beta_t = 50)
     Z_pred, std = rrt_path.run()
     
     Z_true = scenario.ground_truth()
@@ -113,7 +113,7 @@ def run_BiasInformativeRRT_Scenario(scenario, scenario_number, final=False):
         helper_plot(scenario, scenario_number, Z_true, Z_pred, std, rrt_path, RMSE_list_RRT_BIAS[scenario_number - 1], ROUNDS)
 
 def run_BetaInformativeRRT_Scenario(scenario, scenario_number, final=False):
-    rrt_path = BetaInformativeRRTPathPlanning(scenario, n_waypoints=40, d_waypoint_distance=2.5, beta_t = 50)
+    rrt_path = BetaInformativeRRTPathPlanning(scenario, n_waypoints=40, d_waypoint_distance=10, beta_t = 50)
     Z_pred, std = rrt_path.run()
     
     Z_true = scenario.ground_truth()
@@ -142,12 +142,12 @@ if __name__ == '__main__':
             # print("Run Informative")
             # run_Informative_Scenario(scenario, j, final)
             # print("##############################################")
-            print("Run Informative RRT")
-            run_RRT_Scenario(scenario, j, final)
-            print("##############################################")
-            # print("Run Bias Informative RRT")
-            # run_BiasInformativeRRT_Scenario(scenario, j, final)
+            # print("Run Informative RRT")
+            # run_RRT_Scenario(scenario, j, final)
             # print("##############################################")
+            print("Run Bias Informative RRT")
+            run_BiasInformativeRRT_Scenario(scenario, j, final)
+            print("##############################################")
             # print("Run Beta Informative RRT")
             # run_BetaInformativeRRT_Scenario(scenario, j, final)
 

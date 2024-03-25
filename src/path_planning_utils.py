@@ -100,6 +100,46 @@ def create_gif_from_iterations(directory="path_planning_iterations", output_file
     """Create a GIF from saved iterations."""
     # [Add logic to create a GIF from saved iteration plots]
 
+def plot_tree(scenario, tree):
+    """
+    Plots the current state of the RRT tree including nodes and edges.
+    """
+
+    plt.figure(figsize=(10, 10))
+    # Plot workspace boundary
+    plt.plot([0, scenario.workspace_size[0], scenario.workspace_size[0], 0, 0],
+                [0, 0, scenario.workspace_size[1], scenario.workspace_size[1], 0], 'k-')
+
+    # Plot all points in the tree
+    plt.plot(tree.data[:, 0], tree.data[:, 1], 'bo', label='Tree Nodes')
+    
+    plt.xlabel('X')
+    plt.ylabel('Y')
+    plt.title('RRT Tree Expansion')
+    plt.grid(True)
+    plt.axis("equal")
+    plt.show()
+
+def evaluate_information_gain(current_std, new_prediction_std):
+    """
+    Evaluates the effectiveness of a new observation position in reducing the overall uncertainty.
+
+    Parameters:
+    - current_std: The current standard deviation across the environment before adding the new observation.
+    - new_prediction_std: The predicted standard deviation across the environment after adding the new observation.
+
+    Returns:
+    - information_gain: A measure of the reduction in uncertainty, where higher values indicate greater reductions.
+    """
+    # Calculate the average standard deviation before and after the new observation
+    avg_current_std = np.mean(current_std)
+    avg_new_prediction_std = np.mean(new_prediction_std)
+
+    # The information gain is the reduction in the average standard deviation
+    information_gain = avg_current_std - avg_new_prediction_std
+
+    return information_gain
+
 # Example usage within a path planning class method:
 # self.save_iteration({
 #     'Z_true': Z_true,

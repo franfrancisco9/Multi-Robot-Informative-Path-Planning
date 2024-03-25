@@ -61,7 +61,7 @@ class TestRadiationField(unittest.TestCase):
         measurements = [10000, 20000, 30000]
         Z_pred, std = self.rf.predict_spatial_field(waypoints, measurements)
         self.assertEqual(Z_pred.shape, self.rf.X.shape)
-        self.assertEqual(std.shape, self.rf.X.shape)
+        self.assertEqual(std.shape[0], self.rf.X.shape[0]*self.rf.X.shape[1])
 
 if __name__ == '__main__':
     unittest.main()

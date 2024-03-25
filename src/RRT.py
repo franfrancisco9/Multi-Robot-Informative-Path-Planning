@@ -189,8 +189,6 @@ class BiasBetaRRTPathPlanning(StrategicRRTPathPlanning):
         return path    
 
 
-import numpy as np
-
 class AdaptiveRRTPathPlanning(StrategicRRTPathPlanning):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

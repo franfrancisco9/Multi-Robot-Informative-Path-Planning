@@ -3,6 +3,7 @@ from scipy.spatial import KDTree
 import matplotlib.pyplot as plt
 from informative import InformativePathPlanning
 from path_planning_utils import plot_tree
+from tqdm import tqdm
 
 class RRTPathPlanning(InformativePathPlanning):
     """
@@ -273,24 +274,27 @@ class StrategicRRTPathPlanning(InformativePathPlanning):
         start_position = np.array([0.5, 0.5])  # Initial start position
         self.initialize_tree(start_position)
 
-        while self.budget > 0:
-            # print(f"Remaining budget: {self.budget}")
-            self.generate_tree(budget_portion)
-            path = self.select_path_with_highest_uncertainty()
+        # use tdqm to show progress bar for budget iterations
+        with tqdm(total=self.budget, desc="Running RRT Path Planning") as pbar:
+            while self.budget > 0:
+                # print(f"Remaining budget: {self.budget}")
+                self.generate_tree(budget_portion)
+                path = self.select_path_with_highest_uncertainty()
 
-            # Only the first point of the path (closest to the root) should update the model
-            # to simulate the agent moving along this path.
-            self.update_observations_and_model(path)
-            self.budget -= budget_portion
-            self.full_path.extend(path)
-            # plot_iteration(self.root, path, self.budget, self.scenario.workspace_size)
-            # self.plot_uncertainty_reduction()
-            # The next tree starts from the end of the chosen path.
-            if path:
-                self.initialize_tree(path[-1])
-            else:
-                # If no path was selected (shouldn't happen in practice), break the loop to avoid infinite loop.
-                break
+                # Only the first point of the path (closest to the root) should update the model
+                # to simulate the agent moving along this path.
+                self.update_observations_and_model(path)
+                pbar.update(budget_portion)
+                self.budget -= budget_portion
+                self.full_path.extend(path)
+                # plot_iteration(self.root, path, self.budget, self.scenario.workspace_size)
+                # self.plot_uncertainty_reduction()
+                # The next tree starts from the end of the chosen path.
+                if path:
+                    self.initialize_tree(path[-1])
+                else:
+                    # If no path was selected (shouldn't happen in practice), break the loop to avoid infinite loop.
+                    break
             
         plot_final(self.trees, self.full_path, self.scenario.workspace_size)
         self.plot_uncertainty_reduction()
@@ -310,6 +314,50 @@ class StrategicRRTPathPlanning(InformativePathPlanning):
         plt.ylabel('Average Uncertainty (std)')
         plt.grid(True)
         plt.show()
+
+class NaiveRRTPathPlanning(StrategicRRTPathPlanning):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name = "NaiveRRTPath"
+
+    def select_path_with_highest_uncertainty(self):
+        leaf_nodes = [node for node in self.tree_nodes if not node.children]
+        _, stds = self.scenario.gp.predict(np.array([node.point for node in leaf_nodes]), return_std=True)
+        self.uncertainty_reduction.append(np.mean(stds))
+        if leaf_nodes:
+            selected_leaf = np.random.choice(leaf_nodes)
+            # Trace back to root from the selected leaf
+            path = []
+            current_node = selected_leaf
+            while current_node is not None:
+                path.append(current_node.point)
+                current_node = current_node.parent
+            path.reverse()  # Reverse to start from root
+            return path
+        else:
+            return []
+
+class BiasRRTPathPlanning(StrategicRRTPathPlanning):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name = "BiasRRTPath"
+
+    def select_path_with_highest_uncertainty(self):
+        leaf_nodes = [node for node in self.tree_nodes if not node.children]
+        leaf_points = np.array([node.point for node in leaf_nodes])
+        mus, std = self.scenario.gp.predict(leaf_points)
+        self.uncertainty_reduction.append(np.mean(std))
+        min_mu_idx = np.argmax(mus)  # Choose the leaf with the minimum expected mean (seeking sources)
+        selected_leaf = leaf_nodes[min_mu_idx]
+
+        path = []
+        current_node = selected_leaf
+        while current_node is not None:
+            path.append(current_node.point)
+            current_node = current_node.parent
+        path.reverse()
+        return path      
+     
 class TreeNode:
     def __init__(self, point, parent=None):
         self.point = point

@@ -1,5 +1,5 @@
 import numpy as np
-
+from tqdm import tqdm
 class InformativePathPlanning:
     """
     Implements Informative Path Planning to navigate a scenario within a budget, 
@@ -38,7 +38,12 @@ class InformativePathPlanning:
             return None
 
         mu, sigma = self.scenario.gp.predict(valid_points, return_std=True)
-        return valid_points[np.argmax(mu + self.beta_t * sigma)]
+        # normalize the mean and standard deviation
+        mu = np.log10(mu + 1)
+        sigma = np.log10(sigma + 1)
+        # compute the acquisition function
+        acquisition = mu + self.beta_t * sigma
+        return valid_points[np.argmax(acquisition)]
     
     def generate_path(self):
         """
@@ -46,16 +51,17 @@ class InformativePathPlanning:
         """
         current_position = np.array([0.5, 0.5])
         distance_travelled = self.add_observation_and_update(current_position)
-
-        while distance_travelled < self.budget:
-            next_point = self.select_next_point(current_position) 
-            if next_point is None:
-                next_point = self.get_fallback_point(current_position)
+        with tqdm(total=self.budget, desc="Running Informative Path Planning") as pbar:
+            while distance_travelled < self.budget:
+                next_point = self.select_next_point(current_position) 
                 if next_point is None:
-                    break
-            distance_travelled += self.add_observation_and_update(next_point, distance_travelled)
-            current_position = next_point
-
+                    next_point = self.get_fallback_point(current_position)
+                    if next_point is None:
+                        break
+                distance_travelled += self.add_observation_and_update(next_point, distance_travelled)
+                current_position = next_point
+                pbar.update(int(distance_travelled))
+                
         self.full_path = np.array(self.obs_wp).T
 
     def add_observation_and_update(self, point, distance_travelled_so_far=0):

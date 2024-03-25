@@ -2,7 +2,7 @@ import numpy as np
 from bspline import bspline
 
 class Boustrophedon:
-    def __init__(self, workspace_size=(40, 40), d_waypoint_distance=2.5, budget=375):
+    def __init__(self, scenario, d_waypoint_distance=2.5, budget=375):
         """
         Initializes a Boustrophedon path planner.
 
@@ -11,15 +11,15 @@ class Boustrophedon:
         - d_waypoint_distance: Desired distance between waypoints.
         - budget: The total distance budget available for the path.
         """
-        self.workspace_size = workspace_size
+        self.scenario = scenario
+        self.workspace_size = scenario.workspace_size
         self.d_waypoint_distance = d_waypoint_distance
         self.budget = budget
         self.full_path = None
         self.obs_wp = None
         self.name = "Boustrophedon"
-        self.generate_path()
 
-    def generate_path(self):
+    def run(self):
         """
         Generates a Boustrophedon path within a specified distance budget.
         """
@@ -53,6 +53,8 @@ class Boustrophedon:
             
             distance_covered += dist
 
-        print("Distance covered: ", distance_covered)
+        # print("Distance covered: ", distance_covered)
         self.obs_wp = np.array(self.obs_wp)
         self.full_path = p[:i+1].T
+        measurements = self.scenario.simulate_measurements(self.obs_wp)
+        return self.scenario.predict_spatial_field(self.obs_wp, measurements)

@@ -14,13 +14,17 @@ parser.add_argument('-r', '--rounds', type=int, default=1, help="Number of round
 parser.add_argument('-beta', '--beta_t', type=float, default=1.0, help="Beta parameter for exploration-exploitation trade-off.")
 parser.add_argument('-save', '--save', action='store_true', help="Save the results if this flag is set.")
 parser.add_argument('-show', '--show', action='store_true', help="Show the results if this flag is set.")
+parser.add_argument('-seed', '--seed', type=int, default=95789, help="Seed for random number generation.")
+parser.add_argument('-budget', '--budget', type=int, default=375, help="Budget for path planning.")
+parser.add_argument('-d', '--d_waypoint_distance', type=float, default=2.5, help="Waypoint distance.")
+parser.add_argument('-budget-iter', '--budget_iter', type=int, default=10, help="Budget for path planning.")
 args = parser.parse_args()
 
 # Scenarios initialization
 scenarios = [
-    RadiationField(num_sources=1, workspace_size=(40, 40), seed=95789),
-    RadiationField(num_sources=2, workspace_size=(40, 40), seed=95789),
-    RadiationField(num_sources=5, workspace_size=(40, 40), seed=95789),
+    RadiationField(num_sources=1, workspace_size=(40, 40), seed=args.seed),
+    RadiationField(num_sources=2, workspace_size=(40, 40), seed=args.seed),
+    RadiationField(num_sources=5, workspace_size=(40, 40), seed=args.seed),
     ]
 
 # set first source to be at (20, 20) for scenario 1
@@ -28,14 +32,14 @@ scenarios[0].update_source(0, 20, 20, 100000)
 
 # Strategies setup
 strategy_constructors = {
-    "Boustrophedon": lambda scenario: Boustrophedon(scenario, d_waypoint_distance=2.5, budget=375),
-    "Informative": lambda scenario: InformativePathPlanning(scenario, beta_t=args.beta_t, budget=375, d_waypoint_distance=2.5),
-    "NaiveRRT": lambda scenario: NaiveRRTPathPlanning(scenario, beta_t=args.beta_t, budget=375, d_waypoint_distance=2.5),
-    "StrategicRRT": lambda scenario: StrategicRRTPathPlanning(scenario, beta_t=args.beta_t, budget=375, d_waypoint_distance=2.5),
-    "BiasRRT": lambda scenario: BiasRRTPathPlanning(scenario, beta_t=args.beta_t, budget=375, d_waypoint_distance=2.5),
-    "BiasBetaRRT": lambda scenario: BiasBetaRRTPathPlanning(scenario, beta_t=args.beta_t, budget=375, d_waypoint_distance=2.5),
-    "AdaRRT": lambda scenario: AdaptiveRRTPathPlanning(scenario, beta_t=args.beta_t, budget=375, d_waypoint_distance=2.5),
-    "InfoRRT": lambda scenario: InformativeRRTPathPlanning(scenario, beta_t=args.beta_t, budget=1000, d_waypoint_distance=2.5),
+    # "Boustrophedon": lambda scenario: Boustrophedon(scenario, d_waypoint_distance=2.5, budget=375),
+    # "Informative": lambda scenario: InformativePathPlanning(scenario, beta_t=args.beta_t, budget=375, d_waypoint_distance=2.5),
+    # "NaiveRRT": lambda scenario: NaiveRRTPathPlanning(scenario, beta_t=args.beta_t, budget=375, d_waypoint_distance=2.5),
+    # "StrategicRRT": lambda scenario: StrategicRRTPathPlanning(scenario, beta_t=args.beta_t, budget=args.budget, d_waypoint_distance=args.d_waypoint_distance, budget_iter=args.budget_iter),
+    # "BiasRRT": lambda scenario: BiasRRTPathPlanning(scenario, beta_t=args.beta_t, budget=args.budget, d_waypoint_distance=args.d_waypoint_distance, budget_iter=args.budget_iter),
+    # "BiasBetaRRT": lambda scenario: BiasBetaRRTPathPlanning(scenario, beta_t=args.beta_t, budget=args.budget, d_waypoint_distance=args.d_waypoint_distance, budget_iter=args.budget_iter),
+    # "AdaRRT": lambda scenario: AdaptiveRRTPathPlanning(scenario, beta_t=args.beta_t, budget=args.budget, d_waypoint_distance=args.d_waypoint_distance, budget_iter=args.budget_iter),
+    "InfoRRT": lambda scenario: InformativeRRTPathPlanning(scenario, beta_t=args.beta_t, budget=args.budget, d_waypoint_distance=args.d_waypoint_distance, budget_iter=args.budget_iter),
 
 }
 

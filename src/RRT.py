@@ -5,7 +5,7 @@ from informative import InformativePathPlanning
 from tqdm import tqdm
 
 class StrategicRRTPathPlanning(InformativePathPlanning):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, budget_iter=10, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = "StrategicRRTPath"
         self.full_path = []
@@ -13,6 +13,7 @@ class StrategicRRTPathPlanning(InformativePathPlanning):
         self.observations = []
         self.trees = TreeCollection()
         self.uncertainty_reduction = []
+        self.budget_iterations = budget_iter
 
     def initialize_tree(self, start_position):
         self.root = TreeNode(start_position)
@@ -55,6 +56,7 @@ class StrategicRRTPathPlanning(InformativePathPlanning):
         # Trace back to root from the selected leaf
         path = []
         current_node = selected_leaf
+        
         while current_node is not None:
             path.append(current_node.point)
             current_node = current_node.parent
@@ -69,7 +71,7 @@ class StrategicRRTPathPlanning(InformativePathPlanning):
 
         self.scenario.gp.fit(np.array(self.obs_wp), np.log10(self.observations))
     def run(self):
-        budget_portion = self.budget / 20
+        budget_portion = self.budget / self.budget_iterations
         start_position = np.array([0.5, 0.5])  # Initial start position
         self.initialize_tree(start_position)
 
@@ -275,12 +277,21 @@ class InformativeRRTPathPlanning(StrategicRRTPathPlanning):
         self.name = "InformativeRRTPath"
         # Override the node selection strategy
         self.node_selection_key = self.informative_node_selection_key
-
+    
     def informative_node_selection_key(self, node, random_point):
         """Key function for selecting nodes based on predicted mu values."""
         # This example uses predicted mu values as the key
-        mu = self.scenario.gp.predict(np.array([node.point]))
-        return -mu  # Minimize this key to select the node with the highest mu
+        mu, std = self.scenario.gp.predict(np.array([node.point]), return_std=True)
+        if np.std(mu) == 0:
+            mu_normalized = mu
+        else:
+            mu_normalized = (mu - np.mean(mu)) / np.std(mu)
+        if np.std(std) == 0:
+            std_normalized = std
+        else:
+            std_normalized = (std - np.mean(std)) / np.std(std)
+        value = mu_normalized + self.beta_t * std_normalized
+        return -value
 
 class TreeNode:
     def __init__(self, point, parent=None):

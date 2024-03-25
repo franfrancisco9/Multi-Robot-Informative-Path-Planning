@@ -2,7 +2,6 @@ import numpy as np
 from scipy.spatial import KDTree
 import matplotlib.pyplot as plt
 from informative import InformativePathPlanning
-from path_planning_utils import plot_tree
 from tqdm import tqdm
 
 class StrategicRRTPathPlanning(InformativePathPlanning):
@@ -72,7 +71,7 @@ class StrategicRRTPathPlanning(InformativePathPlanning):
         self.initialize_tree(start_position)
 
         # use tdqm to show progress bar for budget iterations
-        with tqdm(total=self.budget, desc="Running RRT Path Planning") as pbar:
+        with tqdm(total=self.budget, desc="Running " + self.name) as pbar:
             while self.budget > 0:
                 # print(f"Remaining budget: {self.budget}")
                 self.generate_tree(budget_portion)
@@ -93,8 +92,8 @@ class StrategicRRTPathPlanning(InformativePathPlanning):
                     # If no path was selected (shouldn't happen in practice), break the loop to avoid infinite loop.
                     break
             
-        plot_final(self.trees, self.full_path, self.scenario.workspace_size)
-        self.plot_uncertainty_reduction()
+        # plot_final(self.trees, self.full_path, self.scenario.workspace_size)
+        # plot_uncertainty_reduction(self.uncertainty_reduction)
         self.obs_wp = np.array(self.obs_wp)
         self.full_path = np.array(self.full_path).reshape(-1, 2).T
         Z_pred, std = self.scenario.predict_spatial_field(self.obs_wp, np.array(self.observations))
@@ -103,15 +102,6 @@ class StrategicRRTPathPlanning(InformativePathPlanning):
     def is_within_workspace(self, point):
         return np.all(point >= 0) & np.all(point <= self.scenario.workspace_size)
 
-    def plot_uncertainty_reduction(self):
-        plt.figure(figsize=(10, 6))
-        plt.plot(self.uncertainty_reduction, marker='o')
-        plt.title('Reduction in Uncertainty Over Iterations')
-        plt.xlabel('Iteration')
-        plt.ylabel('Average Uncertainty (std)')
-        plt.grid(True)
-        plt.show()
-
 class NaiveRRTPathPlanning(StrategicRRTPathPlanning):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -119,7 +109,8 @@ class NaiveRRTPathPlanning(StrategicRRTPathPlanning):
 
     def select_path_with_highest_uncertainty(self):
         leaf_nodes = [node for node in self.tree_nodes if not node.children]
-        _, stds = self.scenario.gp.predict(np.array([node.point for node in leaf_nodes]), return_std=True)
+        leaf_points = np.array([node.point for node in leaf_nodes])
+        _, stds = self.scenario.gp.predict(leaf_points, return_std=True)
         self.uncertainty_reduction.append(np.mean(stds))
         if leaf_nodes:
             selected_leaf = np.random.choice(leaf_nodes)
@@ -196,7 +187,88 @@ class BiasBetaRRTPathPlanning(StrategicRRTPathPlanning):
             current_node = current_node.parent
         path.reverse()  # Reverse to start from root
         return path    
-    
+
+
+import numpy as np
+
+class AdaptiveRRTPathPlanning(StrategicRRTPathPlanning):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name = "AdaptiveRRTPath"
+        # Directional bias is initialized as None; it will be a unit vector pointing in the preferred direction
+        self.directional_bias = None
+        self.last_uncertainty = np.inf
+
+    def select_path_with_highest_uncertainty(self):
+        # Obtain all leaf nodes and their associated points
+        leaf_nodes = [node for node in self.tree_nodes if not node.children]
+        leaf_points = np.array([node.point for node in leaf_nodes])
+        
+        # Predict standard deviations for leaf points
+        _, stds = self.scenario.gp.predict(leaf_points, return_std=True)
+        mean_std = np.mean(stds)
+        
+        # Update uncertainty reduction history
+        self.uncertainty_reduction.append(mean_std)
+        
+        # Determine if the new direction is better or worse
+        if mean_std < self.last_uncertainty:
+            improvement = True
+        else:
+            improvement = False
+        self.last_uncertainty = mean_std
+
+        # Apply directional bias to leaf node selection if it exists
+        if self.directional_bias is not None and leaf_nodes:
+            directional_scores = self.evaluate_directional_bias(leaf_points, improvement)
+            selected_idx = np.argmax(directional_scores)
+        else:
+            selected_idx = np.argmax(stds)  # Default behavior without bias
+        
+        selected_leaf = leaf_nodes[selected_idx]
+
+        # Trace back to root from the selected leaf to form a path
+        path = self.trace_path_to_root(selected_leaf)
+        
+        # Update the directional bias based on the chosen path
+        self.update_directional_bias(path)
+        
+        return path
+
+    def evaluate_directional_bias(self, leaf_points, improvement):
+        """Evaluate directional scores for each leaf node based on current directional bias."""
+        vectors_to_leafs = leaf_points - self.current_position
+        unit_vectors = vectors_to_leafs / np.linalg.norm(vectors_to_leafs, axis=1, keepdims=True)
+        # Calculate dot product between each unit vector and the directional bias
+        scores = np.dot(unit_vectors, self.directional_bias)
+        # Invert scores if the last direction was not an improvement
+        if not improvement:
+            scores = -scores
+        return scores
+
+    def update_directional_bias(self, path):
+        """Update the directional bias based on the most recent path chosen."""
+        if len(path) > 1:
+            # Calculate the direction of the last path taken
+            direction = np.array(path[-1]) - np.array(path[0])
+            norm = np.linalg.norm(direction)
+            if norm > 0:
+                self.directional_bias = direction / norm
+            else:
+                self.directional_bias = None
+        else:
+            self.directional_bias = None
+
+    def trace_path_to_root(self, selected_leaf):
+        """Trace back the path from a selected leaf node to the root."""
+        path = []
+        current_node = selected_leaf
+        while current_node:
+            path.append(current_node.point)
+            current_node = current_node.parent
+        path.reverse()
+        return path
+
 class TreeNode:
     def __init__(self, point, parent=None):
         self.point = point
@@ -230,7 +302,7 @@ def plot_tree_node(node, ax, color='blue'):
     for child in node.children:
         plot_tree_node(child, ax, color=color)
 
-def plot_path(path, ax, color='red', linewidth=2):
+def tree_path_Plot(path, ax, color='red', linewidth=2):
     """Plot a path as a series of line segments."""
     for i in range(1, len(path)):
         ax.plot([path[i-1][0], path[i][0]], [path[i-1][1], path[i][1]], color=color, linewidth=linewidth)
@@ -239,7 +311,7 @@ def plot_iteration(tree_root, chosen_path, iteration, workspace_size):
     """Plot a single iteration with the tree and the chosen path."""
     fig, ax = plt.subplots()
     plot_tree_node(tree_root, ax)
-    plot_path(chosen_path, ax)
+    tree_path_Plot(chosen_path, ax)
     ax.set_title(f'Iteration {iteration}')
     ax.set_xlim(0, workspace_size[0])
     ax.set_ylim(0, workspace_size[1])
@@ -250,9 +322,18 @@ def plot_final(all_trees, final_path, workspace_size):
     fig, ax = plt.subplots()
     for tree_root in all_trees:
         plot_tree_node(tree_root, ax, color='lightgray')  # Plot all trees in light gray
-    plot_path(final_path, ax, color='red', linewidth=3)  # Highlight the final path
+    tree_path_Plot(final_path, ax, color='red', linewidth=3)  # Highlight the final path
     ax.set_title('Final Path with All Trees')
     ax.set_xlim(0, workspace_size[0])
     ax.set_ylim(0, workspace_size[1])
     plt.show()
 
+def plot_unceertainty_reduction(uncertainty_reduction):
+    """Plot the reduction in uncertainty over iterations."""
+    plt.figure(figsize=(10, 6))
+    plt.plot(uncertainty_reduction, marker='o')
+    plt.title('Reduction in Uncertainty Over Iterations')
+    plt.xlabel('Iteration')
+    plt.ylabel('Average Uncertainty (std)')
+    plt.grid(True)
+    plt.show()

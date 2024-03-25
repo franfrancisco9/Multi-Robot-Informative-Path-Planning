@@ -1,12 +1,11 @@
 import numpy as np
 import argparse
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 from boustrophedon import Boustrophedon
 from radiation import RadiationField
 from informative import InformativePathPlanning
-from RRT import StrategicRRTPathPlanning, NaiveRRTPathPlanning, BiasRRTPathPlanning, BiasBetaRRTPathPlanning
+from RRT import StrategicRRTPathPlanning, NaiveRRTPathPlanning, BiasRRTPathPlanning, BiasBetaRRTPathPlanning, AdaptiveRRTPathPlanning
 from path_planning_utils import helper_plot
 
 # Argument parsing
@@ -17,16 +16,24 @@ parser.add_argument('-save', action='store_true', help="Save the results if this
 args = parser.parse_args()
 
 # Scenarios initialization
-scenarios = [RadiationField(num_sources=2, workspace_size=(40, 40), seed=95789)]
+scenarios = [
+    RadiationField(num_sources=1, workspace_size=(40, 40), seed=95789),
+    RadiationField(num_sources=2, workspace_size=(40, 40), seed=95789),
+    RadiationField(num_sources=5, workspace_size=(40, 40), seed=95789),
+    ]
+
+# set first source to be at (20, 20) for scenario 1
+scenarios[0].update_source(0, 20, 20, 100000)
 
 # Strategies setup
 strategy_constructors = {
     "Boustrophedon": lambda scenario: Boustrophedon(scenario, d_waypoint_distance=2.5, budget=375),
     "Informative": lambda scenario: InformativePathPlanning(scenario, beta_t=args.beta_t, budget=375, d_waypoint_distance=2.5),
     "NaiveRRT": lambda scenario: NaiveRRTPathPlanning(scenario, beta_t=args.beta_t, budget=375, d_waypoint_distance=2.5),
+    "StrategicRRT": lambda scenario: StrategicRRTPathPlanning(scenario, beta_t=args.beta_t, budget=375, d_waypoint_distance=2.5),
     "BiasRRT": lambda scenario: BiasRRTPathPlanning(scenario, beta_t=args.beta_t, budget=375, d_waypoint_distance=2.5),
     "BiasBetaRRT": lambda scenario: BiasBetaRRTPathPlanning(scenario, beta_t=args.beta_t, budget=375, d_waypoint_distance=2.5),
-    "StrategicRRT": lambda scenario: StrategicRRTPathPlanning(scenario, beta_t=args.beta_t, budget=375, d_waypoint_distance=2.5)
+    "AdaRRT": lambda scenario: AdaptiveRRTPathPlanning(scenario, beta_t=args.beta_t, budget=375, d_waypoint_distance=2.5),
 }
 
 # RMSE lists setup
@@ -36,6 +43,7 @@ RMSE_lists = {strategy_name: [] for strategy_name in strategy_constructors}
 with tqdm(total=args.rounds * len(scenarios) * len(strategy_constructors), desc="Overall Progress") as pbar:
     for round_number in range(1, args.rounds + 1):
         for scenario_idx, scenario in enumerate(scenarios, start=1):
+            RMSE_lists = {strategy_name: [] for strategy_name in strategy_constructors}
             for strategy_name, constructor in strategy_constructors.items():
                 strategy = constructor(scenario)
                 tqdm.write(f"Round {round_number}/{args.rounds}, Scenario {scenario_idx}, Strategy: {strategy_name}")

@@ -1,13 +1,20 @@
+"""
+Bspline file to generate a bspline curve from a set of control points
+ - Created by: Francisco Fonseca on March 2024
+"""
 import numpy as np
 import scipy.interpolate as si
 
-
 def bspline(cv, n=100, degree=3):
-    """ Calculate n samples on a bspline
+    """ 
+    Calculate n samples on a bspline
 
-        cv :      Array ov control vertices
-        n  :      Number of samples to return
-        degree:   Curve degree
+    Inputs:
+        cv :      Array of control vertices
+        n  :      Number of samples to return, default: 100
+        degree:   Curve degree, default: 3
+    Output:
+        An array of n samples on the curve
     """
     cv = np.asarray(cv)
     count = cv.shape[0]
@@ -21,13 +28,13 @@ def bspline(cv, n=100, degree=3):
     # Calculate query range
     u = np.linspace(0,(count-degree),n)
 
-    # Calculate result
-    # print(si.splev(u, (kv,cv.T,degree)))
+    # Calculate and return the result
     return np.array(si.splev(u, (kv,cv.T,degree))).T
 
 
 
 if __name__ == "__main__":
+    # Example of Boustrophedon path using bspline
     import matplotlib.pyplot as plt
     colors = ('b', 'g', 'g', 'c', 'm', 'y', 'k')
 

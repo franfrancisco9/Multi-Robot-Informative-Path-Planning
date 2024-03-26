@@ -93,6 +93,8 @@ class RadiationField:
             intensity = self.intensity(wp)
             noise = np.random.normal(0, noise_level*intensity)
             measurement = intensity + noise
+            if measurement <= 0:
+                measurement = 1e-6
             measurements.append(measurement)
         return measurements
 

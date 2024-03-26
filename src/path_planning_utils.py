@@ -9,11 +9,11 @@ def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, path, RMSE_list,
     # Titles for clarity
     strategy_title = f'{path.name} Strategy - Scenario {scenario_number}'
     # save fig title
-    save_fig_title = f'../images/17/scenario_{scenario_number}_run_{ROUNDS}_path_{path.name}.png'
+    save_fig_title = f'../images/18/scenario_{scenario_number}_run_{ROUNDS}_path_{path.name}.png'
     # if there is a beta_t then add it to the title
     if hasattr(path, 'beta_t'):
         strategy_title += f' - Beta_t: {path.beta_t}'
-        save_fig_title = f'../images/17/scenario_{scenario_number}_run_{ROUNDS}_path_{path.name}_beta_{path.beta_t}.png'
+        save_fig_title = f'../images/18/scenario_{scenario_number}_run_{ROUNDS}_path_{path.name}_beta_{path.beta_t}.png'
     ground_truth_title = 'Ground Truth'
     predicted_field_title = 'Predicted Field'
     uncertainty_field_title = 'Uncertainty Field'

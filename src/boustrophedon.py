@@ -1,15 +1,20 @@
+"""
+Boustrophedon path planner.
+- Created by: Francisco Fonseca on March 2024
+"""
 import numpy as np
 from bspline import bspline
 
 class Boustrophedon:
-    def __init__(self, scenario, d_waypoint_distance=2.5, budget=375):
+    def __init__(self, scenario, d_waypoint_distance=2.5, budget=375, line_spacing=5):
         """
         Initializes a Boustrophedon path planner.
 
         Parameters:
-        - workspace_size: Tuple indicating the size of the workspace.
+        - scenario: The radiation field scenario to plan a path for.
         - d_waypoint_distance: Desired distance between waypoints.
         - budget: The total distance budget available for the path.
+        - line_spacing: The spacing between lines in the Boustrophedon pattern.
         """
         self.scenario = scenario
         self.workspace_size = scenario.workspace_size
@@ -18,12 +23,13 @@ class Boustrophedon:
         self.full_path = None
         self.obs_wp = None
         self.name = "Boustrophedon"
+        self.line_spacing = line_spacing
 
     def run(self):
         """
         Generates a Boustrophedon path within a specified distance budget.
         """
-        x_coords = np.arange(0.5, self.workspace_size[0], 5)
+        x_coords = np.arange(0.5, self.workspace_size[0], self.line_spacing)
         if x_coords[-1] + 0.5 != self.workspace_size[0]:
             x_coords = np.append(x_coords, self.workspace_size[0] - 0.5)
         

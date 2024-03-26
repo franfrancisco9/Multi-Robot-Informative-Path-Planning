@@ -153,3 +153,7 @@ cython_debug/
 
 # Image folder
 /images
+
+# Ignore json file except for example_setup.json
+*.json
+!example_setup.json

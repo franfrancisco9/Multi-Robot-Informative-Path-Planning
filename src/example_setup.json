@@ -1,0 +1,52 @@
+{
+    "scenarios": [
+      {
+        "params": {
+          "num_sources": 1,
+          "workspace_size": [40, 40]
+        },
+        "specific_params": {
+          "1": [20, 20, 10000000]
+        }
+      },
+      {
+        "params": {
+          "num_sources": 2,
+          "workspace_size": [40, 40]
+        }
+      },
+      {
+        "params": {
+          "num_sources": 5,
+          "workspace_size": [40, 40]
+        }
+      },
+      {
+        "params": {
+          "num_sources": 10,
+          "workspace_size": [40, 40]
+        }
+      }
+    ],
+    "strategies": [
+      "Boustrophedon",
+      "InformativePathPlanning",
+      "NaiveRRTPathPlanning",
+      "StrategicRRTPathPlanning",
+      "BiasRRTPathPlanning",
+      "BiasBetaRRTPathPlanning",
+      "AdaptiveRRTPathPlanning",
+      "InformativeRRTPathPlanning"
+    ],
+    "args": {
+      "rounds": 1,
+      "beta_t": 1.0,
+      "save": false,
+      "show": true,
+      "seed": 95789,
+      "budget": 375,
+      "d_waypoint_distance": 2.5,
+      "budget_iter": 10
+    }
+  }
+  

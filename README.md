@@ -27,18 +27,30 @@ pip install -r requirements.txt
 
 ### Running the code
 
+
+Running the code
+To run the simulations, use the following command with the necessary arguments:
+
 ```bash
-python main.py -r [NUMBER_OF_ROUNDS] -beta [BETA_T_VALUE] -save -show -seed [SEED] -budget [BUDGET] -d [WAYPOINT_DISTANCE] -budget-iter [BUDGET_ITER]
+python main.py -config example_setup.json
 ```
 
-- `NUMBER_OF_ROUNDS`: Number of rounds to run the simulation.
-- `BETA_T_VALUE`: Beta value for the Bias Beta RRT strategy.
-- `-save`: Flag to save the results to a file.
-- `-show`: Flag to show the results in a plot.
-- `-seed`: Seed for random number generation.
-- `-budget`: Budget for path planning.
-- `-d`: Waypoint distance.
-- `-budget_iter`: Budget iterations for RRT strategies.
+Where `example_setup.json` should be replaced with the path to your JSON configuration file. The JSON configuration allows you to easily specify the scenarios and strategies you want to test, along with any other parameters for the simulation. Check the example JSON configuration file for more information on how to set up your own.
+
+Key Components of the Configuration:
+
+- Scenarios: Define the simulation scenarios. Each scenario has params for general parameters like number of sources and workspace size. specific_params allows you to specify the location and strength of specific sources.
+- Strategies: List of strategy class names you wish to test. Ensure the strategy names match the class names in the code.
+- Args: General arguments for the simulation such as the number of rounds, beta value for trade-off, whether to save/show the results, seed for randomness, budget for path planning, waypoint distance, and budget iterations for RRT strategies:
+
+    - `rounds`: Number of rounds to run the simulation.
+    - `beta_t`: Beta value for the Bias Beta RRT strategy.
+    - `save`: Flag to save the results to a file.
+    - `show`: Flag to show the results in a plot.
+    - `seed`: Seed for random number generation.
+    - `budget`: Budget for path planning.
+    - `d_waypoint_distance`: Waypoint distance.
+    - `budget_iter`: Budget iterations for RRT strategies.
 
 ## Note
 

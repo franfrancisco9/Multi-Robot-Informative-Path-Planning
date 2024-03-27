@@ -82,6 +82,10 @@ def run_simulations(scenarios, strategy_constructors, args):
                     if round_number == args["rounds"]:
                         helper_plot(scenario, scenario_idx, Z_true, Z_pred, std, strategy, RMSE_lists[strategy_name], args["rounds"], save=args["save"], show=args["show"])
                     pbar.update(1)
+            # print current RMSE for each strategy organized from lowest to highest
+            print(f"Scenario {scenario_idx} RMSE:")
+            for strategy_name in sorted(RMSE_lists, key=RMSE_lists.get):
+                print(f"{strategy_name}: {RMSE_lists[strategy_name]}")	
 
 def main():
     parser = argparse.ArgumentParser(description="Run path planning scenarios.")

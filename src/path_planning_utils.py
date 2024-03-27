@@ -131,10 +131,10 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
     axs[1, 1].set_ylabel('RMSE')
 
     # Show or save the plot as needed
-    if show:
-        plt.show()
     if save:
         plt.savefig(save_fig_title)
+    if show:
+        plt.show()
     plt.close()
 
     # Additional RRT-specific plots
@@ -157,9 +157,9 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
         axs[1].set_ylabel('Average Uncertainty (std)')
         axs[1].grid(True)
 
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-        if show:
-            plt.show()
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])~
         if save:
             plt.savefig(save_fig_title.replace('.png', '_additional.png'))
+        if show:
+            plt.show()
         plt.close()

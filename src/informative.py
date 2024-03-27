@@ -44,7 +44,6 @@ class BaseInformative:
     def run(self):
         raise NotImplementedError("This method should be implemented by subclasses.")
 
-
 class InformativePathPlanning(BaseInformative):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

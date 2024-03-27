@@ -7,7 +7,7 @@ from tqdm import tqdm
 from boustrophedon import Boustrophedon
 from radiation import RadiationField
 from informative import InformativePathPlanning
-from RRT import (StrategicRRTPathPlanning, NaiveRRTPathPlanning, BiasRRTPathPlanning, 
+from RRT import (StrategicRRTPathPlanning, BaseRRTPathPlanning, BiasRRTPathPlanning, 
                  BiasBetaRRTPathPlanning, AdaptiveRRTPathPlanning, InformativeRRTPathPlanning)
 from path_planning_utils import helper_plot
 

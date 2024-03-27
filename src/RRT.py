@@ -1,20 +1,20 @@
 import numpy as np
 from scipy.spatial import KDTree
 import matplotlib.pyplot as plt
-from informative import InformativePathPlanning
+from informative import BaseInformative
 from tqdm import tqdm
 from path_planning_utils import TreeNode, TreeCollection
 
-class StrategicRRTPathPlanning(InformativePathPlanning):
+
+class BaseRRTPathPlanning(BaseInformative):
     def __init__(self, *args, budget_iter=10, **kwargs):
         super().__init__(*args, **kwargs)
-        self.name = "StrategicRRTPath"
+        self.budget_iterations = budget_iter
         self.full_path = []
-        self.root = None
         self.observations = []
         self.trees = TreeCollection()
         self.uncertainty_reduction = []
-        self.budget_iterations = budget_iter
+        self.name = "BaseRRTPath"
 
     def initialize_tree(self, start_position):
         self.root = TreeNode(start_position)
@@ -46,24 +46,6 @@ class StrategicRRTPathPlanning(InformativePathPlanning):
         # add the tree to the list of trees
         self.trees.add(self.root)
 
-    def select_path_with_highest_uncertainty(self):
-        leaf_nodes = [node for node in self.tree_nodes if not node.children]
-        leaf_points = np.array([node.point for node in leaf_nodes])
-        _, stds = self.scenario.gp.predict(leaf_points, return_std=True)
-        self.uncertainty_reduction.append(np.mean(stds))
-        max_std_idx = np.argmax(stds)
-        selected_leaf = leaf_nodes[max_std_idx]
-
-        # Trace back to root from the selected leaf
-        path = []
-        current_node = selected_leaf
-        
-        while current_node is not None:
-            path.append(current_node.point)
-            current_node = current_node.parent
-        path.reverse()  # Reverse to start from root
-        return path
-    
     def update_observations_and_model(self, path):
         for point in path:
             measurement = self.scenario.simulate_measurements([point])[0]
@@ -71,6 +53,7 @@ class StrategicRRTPathPlanning(InformativePathPlanning):
             self.obs_wp.append(point)
 
         self.scenario.gp.fit(np.array(self.obs_wp), np.log10(self.observations))
+
     def run(self):
         budget_portion = self.budget / self.budget_iterations
         start_position = np.array([0.5, 0.5])  # Initial start position
@@ -81,7 +64,7 @@ class StrategicRRTPathPlanning(InformativePathPlanning):
             while self.budget > 0:
                 # print(f"Remaining budget: {self.budget}")
                 self.generate_tree(budget_portion)
-                path = self.select_path_with_highest_uncertainty()
+                path = self.select_path()
 
                 # Only the first point of the path (closest to the root) should update the model
                 # to simulate the agent moving along this path.
@@ -103,17 +86,10 @@ class StrategicRRTPathPlanning(InformativePathPlanning):
 
     def is_within_workspace(self, point):
         return np.all(point >= 0) & np.all(point <= self.scenario.workspace_size)
-
-class NaiveRRTPathPlanning(StrategicRRTPathPlanning):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = "NaiveRRTPath"
-
-    def select_path_with_highest_uncertainty(self):
+    
+    def select_path(self):
+        # Random path selection as the baseline behavior
         leaf_nodes = [node for node in self.tree_nodes if not node.children]
-        leaf_points = np.array([node.point for node in leaf_nodes])
-        _, stds = self.scenario.gp.predict(leaf_points, return_std=True)
-        self.uncertainty_reduction.append(np.mean(stds))
         if leaf_nodes:
             selected_leaf = np.random.choice(leaf_nodes)
             # Trace back to root from the selected leaf
@@ -122,12 +98,36 @@ class NaiveRRTPathPlanning(StrategicRRTPathPlanning):
             while current_node is not None:
                 path.append(current_node.point)
                 current_node = current_node.parent
-            path.reverse()  # Reverse to start from root
+            path.reverse()  # Reverse to start from the root
             return path
         else:
             return []
 
-class BiasRRTPathPlanning(StrategicRRTPathPlanning):
+class StrategicRRTPathPlanning(BaseRRTPathPlanning):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name = "StrategicRRTPath"
+
+    def select_path(self):
+        leaf_nodes = [node for node in self.tree_nodes if not node.children]
+        leaf_points = np.array([node.point for node in leaf_nodes])
+        _, stds = self.scenario.gp.predict(leaf_points, return_std=True)
+        self.uncertainty_reduction.append(np.mean(stds))
+        max_std_idx = np.argmax(stds)
+        selected_leaf = leaf_nodes[max_std_idx]
+
+        # Trace back to root from the selected leaf
+        path = []
+        current_node = selected_leaf
+        
+        while current_node is not None:
+            path.append(current_node.point)
+            current_node = current_node.parent
+        path.reverse()  # Reverse to start from root
+        return path
+    
+
+class BiasRRTPathPlanning(BaseRRTPathPlanning):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = "BiasRRTPath"
@@ -148,7 +148,7 @@ class BiasRRTPathPlanning(StrategicRRTPathPlanning):
         path.reverse()
         return path   
        
-class BiasBetaRRTPathPlanning(StrategicRRTPathPlanning):
+class BiasBetaRRTPathPlanning(BaseRRTPathPlanning):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = "BiasBetaRRTPath"
@@ -190,7 +190,7 @@ class BiasBetaRRTPathPlanning(StrategicRRTPathPlanning):
         path.reverse()  # Reverse to start from root
         return path    
 
-class AdaptiveRRTPathPlanning(StrategicRRTPathPlanning):
+class AdaptiveRRTPathPlanning(BaseRRTPathPlanning):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = "AdaptiveRRTPath"
@@ -268,7 +268,7 @@ class AdaptiveRRTPathPlanning(StrategicRRTPathPlanning):
         path.reverse()
         return path
 
-class InformativeRRTPathPlanning(StrategicRRTPathPlanning):
+class InformativeRRTPathPlanning(BaseRRTPathPlanning):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = "InformativeRRTPath"

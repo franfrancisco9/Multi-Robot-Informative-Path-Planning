@@ -2,12 +2,12 @@ import numpy as np
 from tqdm import tqdm
 from scipy.spatial import KDTree
 
-class InformativePathPlanning:
+class BaseInformative:
     """
-    Implements Informative Path Planning to navigate a scenario within a budget, 
+    Implements Base Informative to navigate a scenario within a budget, 
     balancing exploration and exploitation based on Gaussian Process predictions.
     """
-    def __init__(self, scenario, beta_t=500.0, budget=375, d_waypoint_distance=2.5):
+    def __init__(self, scenario, beta_t=5.0, budget=375, d_waypoint_distance=2.5):
         """
         Initializes the path planner.
 
@@ -23,11 +23,32 @@ class InformativePathPlanning:
         self.d_waypoint_distance = d_waypoint_distance
         self.observations = []  # Stores measurements for each waypoint
         self.obs_wp = []  # Stores observed waypoints
-        self.name = "InformativePath"
+        self.name = "BaseInformative"
         # Precompute the grid to save computation in select_next_point
         x, y = np.linspace(0, scenario.workspace_size[0], 200), np.linspace(0, scenario.workspace_size[1], 200)
         self.grid = np.vstack(np.meshgrid(x, y)).reshape(2, -1).T
         self.grid_kdtree = KDTree(self.grid)
+
+    def select_next_point(self, current_position):
+        raise NotImplementedError("This method should be implemented by subclasses.")
+    
+    def generate_path(self):
+        raise NotImplementedError("This method should be implemented by subclasses.")
+
+    def add_observation_and_update(self, point, distance_travelled_so_far=0):
+        raise NotImplementedError("This method should be implemented by subclasses.")
+
+    def get_advanced_fallback_point(self, current_position):
+        raise NotImplementedError("This method should be implemented by subclasses.")
+
+    def run(self):
+        raise NotImplementedError("This method should be implemented by subclasses.")
+
+
+class InformativePathPlanning(BaseInformative):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name = "InformativePath"
 
     def select_next_point(self, current_position):
         """

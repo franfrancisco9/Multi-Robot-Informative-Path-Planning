@@ -1,5 +1,6 @@
 import numpy as np
 from tqdm import tqdm
+from scipy.spatial import KDTree
 
 class InformativePathPlanning:
     """
@@ -26,17 +27,24 @@ class InformativePathPlanning:
         # Precompute the grid to save computation in select_next_point
         x, y = np.linspace(0, scenario.workspace_size[0], 200), np.linspace(0, scenario.workspace_size[1], 200)
         self.grid = np.vstack(np.meshgrid(x, y)).reshape(2, -1).T
+        self.grid_kdtree = KDTree(self.grid)
 
     def select_next_point(self, current_position):
         """
-        Selects the next point based on the Gaussian Process model and the acquisition function.
+        Selects the next point based on the Gaussian Process model and the acquisition function,
+        using a KD-tree for efficient neighbor searching.
         """
-        distances = np.linalg.norm(self.grid - current_position, axis=1)
-        valid_points = self.grid[(distances > 2) & (distances <= self.d_waypoint_distance)]
+        # Query KD-tree for points within the valid distance range
+        indices = self.grid_kdtree.query_ball_point(current_position, self.d_waypoint_distance)
+        valid_points = self.grid[indices]
+
+        # Filter out points too close to the current position (if necessary)
+        valid_points = valid_points[np.linalg.norm(valid_points - current_position, axis=1) > 2]
 
         if valid_points.size == 0:
             return None
 
+        # Perform GP prediction and calculate acquisition function for valid points
         mu, sigma = self.scenario.gp.predict(valid_points, return_std=True)
         acquisition = mu + self.beta_t * sigma
         return valid_points[np.argmax(acquisition)]

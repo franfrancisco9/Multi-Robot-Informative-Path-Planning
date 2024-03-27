@@ -58,8 +58,6 @@ class Boustrophedon:
                 self.obs_wp.append(p[i])
             
             distance_covered += dist
-
-        # print("Distance covered: ", distance_covered)
         self.obs_wp = np.array(self.obs_wp)
         self.full_path = p[:i+1].T
         measurements = self.scenario.simulate_measurements(self.obs_wp)

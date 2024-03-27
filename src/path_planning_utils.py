@@ -50,7 +50,7 @@ def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, path, RMSE_list,
     axs[0][1].plot(path.obs_wp[:, 0], path.obs_wp[:, 1], 'ro', markersize=5)  # Waypoints
     # make the background the colour of the lowest contour level
     axs[0][1].set_facecolor(cmap(0))
-    sources = scenario.get_sources_info()
+    sources = scenario.sources
     for source in sources:
         axs[0][1].plot(source[0], source[1], 'rX', markersize=10, label='Source')
 

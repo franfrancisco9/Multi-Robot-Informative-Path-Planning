@@ -61,7 +61,7 @@ def run_simulations(scenarios, strategy_constructors, args):
                     RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
                     tqdm.write(f"{strategy_name} RMSE: {RMSE}")
                     RMSE_lists[strategy_name].append(RMSE)
-                    if round_number == args["rounds"] and args.get("save", False):
+                    if round_number == args["rounds"]:
                         helper_plot(scenario, scenario_idx, Z_true, Z_pred, std, strategy, RMSE_lists[strategy_name], args["rounds"], save=args["save"], show=args["show"])
                     pbar.update(1)
 

@@ -132,7 +132,7 @@ class BiasRRTPathPlanning(BaseRRTPathPlanning):
         super().__init__(*args, **kwargs)
         self.name = "BiasRRTPath"
 
-    def select_path_with_highest_uncertainty(self):
+    def select_path(self):
         leaf_nodes = [node for node in self.tree_nodes if not node.children]
         leaf_points = np.array([node.point for node in leaf_nodes])
         mus, std = self.scenario.gp.predict(leaf_points, return_std=True)
@@ -153,7 +153,7 @@ class BiasBetaRRTPathPlanning(BaseRRTPathPlanning):
         super().__init__(*args, **kwargs)
         self.name = "BiasBetaRRTPath"
 
-    def select_path_with_highest_uncertainty(self):
+    def select_path(self):
         """
         Overriding the method to consider both bias towards regions of high uncertainty and
         the beta_t parameter to manage the exploration-exploitation trade-off.
@@ -198,7 +198,7 @@ class AdaptiveRRTPathPlanning(BaseRRTPathPlanning):
         self.directional_bias = None
         self.last_uncertainty = np.inf
 
-    def select_path_with_highest_uncertainty(self):
+    def select_path(self):
         # Obtain all leaf nodes and their associated points
         leaf_nodes = [node for node in self.tree_nodes if not node.children]
         leaf_points = np.array([node.point for node in leaf_nodes])
@@ -268,7 +268,7 @@ class AdaptiveRRTPathPlanning(BaseRRTPathPlanning):
         path.reverse()
         return path
 
-class InformativeRRTPathPlanning(BaseRRTPathPlanning):
+class InformativeRRTPathPlanning(StrategicRRTPathPlanning):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = "InformativeRRTPath"

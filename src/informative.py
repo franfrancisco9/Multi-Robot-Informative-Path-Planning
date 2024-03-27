@@ -77,15 +77,17 @@ class InformativePathPlanning(BaseInformative):
         current_position = np.array([0.5, 0.5])
         distance_travelled = self.add_observation_and_update(current_position)
         with tqdm(total=self.budget, desc="Running Informative Path Planning") as pbar:
-            while distance_travelled < self.budget:
+            while self.budget > 0:
                 next_point = self.select_next_point(current_position) 
                 if next_point is None:
                     next_point = self.get_advanced_fallback_point(current_position)
                     if next_point is None:
                         break
-                distance_travelled += self.add_observation_and_update(next_point, distance_travelled)
+                distance_travelled = self.add_observation_and_update(next_point, distance_travelled)
+                self.budget -= distance_travelled
                 current_position = next_point
-                pbar.update(int(distance_travelled))
+                pbar.update(distance_travelled)
+                
         self.obs_wp = np.array(self.obs_wp)
         self.full_path = self.obs_wp.reshape(-1, 2).T
 
@@ -126,6 +128,7 @@ class InformativePathPlanning(BaseInformative):
         Executes the path planning process and returns the predicted spatial field.
         """
         self.generate_path()
+        print(f"Path length: {len(self.obs_wp)}")
         waypoints = np.array(self.obs_wp)
         measurements = np.array(self.observations)
         return self.scenario.predict_spatial_field(waypoints, measurements)

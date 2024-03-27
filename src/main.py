@@ -27,8 +27,7 @@ def initialize_scenarios(config):
     """Initialize scenarios based on the configuration."""
     scenarios = []
     for scenario_config in config["scenarios"]:
-        scenario_class = RadiationField
-        scenario = scenario_class(**scenario_config["params"])
+        scenario = RadiationField(**scenario_config["params"])
         if "specific_params" in scenario_config:
             for key, value in scenario_config["specific_params"].items():
                 scenario.update_source(int(key)-1, *value)

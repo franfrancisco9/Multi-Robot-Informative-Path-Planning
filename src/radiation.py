@@ -82,49 +82,77 @@ class RadiationField:
         """Recalculates the ground truth based on current source positions."""
         self.g_truth = self.ground_truth()
 
-    def intensity(self, r):
-        """Computes intensity at a point r."""
-        intensity = 0
-        for source in self.sources:
-            r_n, A_n = np.array(source[:2]), source[2]
-            dist = np.linalg.norm(r - r_n)
-            if dist <= self.r_s:
-                intensity += A_n / (4 * np.pi * self.r_s**2)
-            else:
-                intensity += A_n * self.T / (4 * np.pi * dist**2)
-        return intensity
-
-    def response(self, r):
-        """Computes response at a point r."""
-        R = 0
-        for source in self.sources:
-            r_n, A_n = np.array(source[:2]), source[2]
-            dist = np.linalg.norm(r - r_n)
-            if dist <= self.r_d:
-                R += 0.5 * A_n
-            else:
-                theta = np.arcsin(self.r_d / dist)
-                R += 0.5 * A_n * (1 - np.cos(theta))
-        return R
+    def intensity(self, waypoints):
+        """Vectorized computation of intensity for an array of waypoints."""
+        waypoints = np.array(waypoints)  # Ensure waypoints is a numpy array.
+        
+        if waypoints.ndim == 1:
+            waypoints = waypoints[np.newaxis, :]  # Add a new axis if waypoints is a single point.
+        
+        # Extract coordinates of sources and their amplitudes.
+        source_positions = np.array(self.sources)[:, :2]
+        source_amplitudes = np.array(self.sources)[:, 2]
+        
+        # Calculate distances between each waypoint and each source.
+        # Reshape waypoints and source_positions for broadcasting.
+        distances = np.linalg.norm(waypoints[:, np.newaxis, :] - source_positions[np.newaxis, :, :], axis=-1)
+        
+        # Apply the intensity formula.
+        within_r_s = distances <= self.r_s
+        outside_r_s = ~within_r_s
+        
+        # Intensity contributions from sources within r_s.
+        intensity_within = np.where(within_r_s, source_amplitudes / (4 * np.pi * self.r_s**2), 0)
+        
+        # Intensity contributions from sources outside r_s.
+        intensity_outside = np.where(outside_r_s, source_amplitudes * self.T / (4 * np.pi * distances**2), 0)
+        
+        # Sum the contributions for each waypoint.
+        total_intensity = np.sum(intensity_within + intensity_outside, axis=-1)
+        
+        return total_intensity
 
     def ground_truth(self):
         """Vectorized computation of ground truth to enhance performance."""
-        Z_true = np.zeros(self.X.shape)
-        for i in range(self.X.shape[0]):
-            for j in range(self.X.shape[1]):
-                r = np.array([self.X[i, j], self.Y[i, j]])
-                Z_true[i, j] = self.intensity(r) + 50 * self.response(r)
+        # Create a meshgrid of coordinates as complex numbers for vectorized computation.
+        R = self.X + 1j * self.Y
+        Z_true = np.zeros(R.shape)
+
+        for source in self.sources:
+            r_n = np.array(source[:2])
+            A_n = source[2]
+            # Convert source position to complex number format.
+            R_n = r_n[0] + 1j * r_n[1]
+            # Calculate distance from each point in the grid to the source.
+            dist = np.abs(R - R_n)
+            
+            # Vectorized intensity and response calculations
+            intensity = np.where(dist <= self.r_s,
+                                A_n / (4 * np.pi * self.r_s**2),
+                                A_n * self.T / (4 * np.pi * dist**2))
+
+            theta = np.arcsin(np.minimum(self.r_d / dist, 1))
+            response = np.where(dist <= self.r_d,
+                                0.5 * A_n,
+                                0.5 * A_n * (1 - np.cos(theta)))
+
+            # Accumulate results
+            Z_true += intensity + 50 * response
+
         return Z_true
 
     def simulate_measurements(self, waypoints, noise_level=0.0001):
-        """Simulates measurements at given waypoints with configurable noise."""
-        measurements = []
-        for wp in waypoints:
-            intensity = self.intensity(wp)
-            noise = np.random.normal(0, noise_level * intensity)
-            measurement = max(intensity + noise, 1e-6)
-            measurements.append(measurement)
+        """Simulates measurements at given waypoints with configurable noise, vectorized version."""
+        intensities = self.intensity(waypoints)
+        
+        # Generate noise for each waypoint in one operation.
+        noise = np.random.normal(0, noise_level * intensities)
+        
+        # Apply noise to each measurement, ensuring the result is at least 1e-6.
+        measurements = np.maximum(intensities + noise, 1e-6)
+        
         return measurements
+
 
     def predict_spatial_field(self, waypoints, measurements):
         """Predicts the spatial field based on waypoints and measurements."""

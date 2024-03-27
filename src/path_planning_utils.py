@@ -1,135 +1,34 @@
-import os
-import pickle
-import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import ticker, colors
-
-def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, path, RMSE_list, ROUNDS, save=False, show=False):
-    # Titles for clarity
-    strategy_title = f'{path.name} Strategy - Scenario {scenario_number}'
-    # save fig title
-    save_fig_title = f'../images/18/scenario_{scenario_number}_run_{ROUNDS}_path_{path.name}.png'
-    # if there is a beta_t then add it to the title
-    if hasattr(path, 'beta_t'):
-        strategy_title += f' - Beta_t: {path.beta_t}'
-        save_fig_title = f'../images/18/scenario_{scenario_number}_run_{ROUNDS}_path_{path.name}_beta_{path.beta_t}.png'
-    ground_truth_title = 'Ground Truth'
-    predicted_field_title = 'Predicted Field'
-    uncertainty_field_title = 'Uncertainty Field'
-    rmse_title = f'{ROUNDS} Run Average RMSE'
-
-    # Determine log scale levels,
-    if Z_true.max() == 0:
-        max_log_value = 1
-    else:
-        max_log_value = np.ceil(np.log10(Z_true.max()))
-    levels = np.logspace(0, max_log_value, int(max_log_value) + 1)
-    cmap = plt.get_cmap('Greens_r', len(levels) - 1)
-
-    # Plot ground truth and predicted field
-    fig, axs = plt.subplots(2, 2, figsize=(20, 8), constrained_layout=True)
-    fig.suptitle(strategy_title, fontsize=16)
-    # Ground truth
-    cs_true = axs[0][0].contourf(scenario.X, scenario.Y, Z_true, levels=levels, cmap=cmap, norm=colors.BoundaryNorm(levels, ncolors=cmap.N, clip=True))
-    fig.colorbar(cs_true, ax=axs[0][0], format=ticker.LogFormatterMathtext())
-    axs[0][0].set_title(ground_truth_title)
-    axs[0][0].set_xlabel('x')
-    axs[0][0].set_ylabel('y')
-    # make the background the colour of the lowest contour level
-    axs[0][0].set_facecolor(cmap(0))
-
-    # Predicted field
-    cs_pred = axs[0][1].contourf(scenario.X, scenario.Y, Z_pred, levels=levels, cmap=cmap, norm=colors.BoundaryNorm(levels, ncolors=cmap.N, clip=True))
-    fig.colorbar(cs_pred, ax=axs[0][1], format=ticker.LogFormatterMathtext())
-    axs[0][1].set_title(predicted_field_title)
-    x_new, y_new = path.full_path
-    axs[0][1].plot(x_new, y_new, 'b-', label=path.name + ' Path')
-    # add the waypoints with red circles
-    # print(path.obs_wp)
-    axs[0][1].plot(path.obs_wp[:, 0], path.obs_wp[:, 1], 'ro', markersize=5)  # Waypoints
-    # make the background the colour of the lowest contour level
-    axs[0][1].set_facecolor(cmap(0))
-    sources = scenario.sources
-    for source in sources:
-        axs[0][1].plot(source[0], source[1], 'rX', markersize=10, label='Source')
-
-    # Uncertainty field
-    std = std.reshape(scenario.X.shape[0], scenario.X.shape[1])
-    cs_uncertainty = axs[1][0].contourf(scenario.X, scenario.Y, std, cmap='Reds')
-    # fig.colorbar(cs_uncertainty, ax=axs[1][0])
-    axs[1][0].set_title(uncertainty_field_title)
-    # make the background the colour of the lowest contour level
-    axs[1][0].set_facecolor('pink')
-
-    # Plot RMSE as vertical y with median as a dot and std as error bars
-    # x label is just the scenario number and title is 10 run average RMSE
-    # Only one x label for each scenario
-    axs[1][1].errorbar(scenario_number, np.mean(RMSE_list), yerr=np.std(RMSE_list), fmt='o', linewidth=2, capsize=6)
-    axs[1][1].set_title(rmse_title)
-    axs[1][1].set_xlabel('Scenario' + str(scenario_number))
-    # only show one tick for the x axis
-    axs[1][1].set_xticks([scenario_number])
-    axs[1][1].set_ylabel('RMSE')
-
-    if show:
-        plt.show()
-    if save:
-        plt.savefig(save_fig_title)
-
-    plt.close()
-    # Check if path's name contains "RRT"
-    if "RRT" in path.name:
-        # Combine additional RRT plots into the existing plotting process
-        fig, axs = plt.subplots(1, 2, figsize=(20, 6))
-        fig.suptitle(f'Additional Insights for {strategy_title}', fontsize=16)
-        # Plot all trees and the final chosen path
-        for tree_root in path.trees:
-            plot_tree_node(tree_root, axs[0], color='lightgray')  # Plot all trees in light gray
-        plot_path(path.full_path, axs[0], color='red', linewidth=3)  # Highlight the final path
-        axs[0].set_title('Final Path with All Trees')
-        axs[0].set_xlim(0, scenario.workspace_size[0])
-        axs[0].set_ylim(0, scenario.workspace_size[1])
-
-        # Plot the reduction in uncertainty over iterations
-        axs[1].plot(path.uncertainty_reduction, marker='o')
-        axs[1].set_title('Reduction in Uncertainty Over Iterations')
-        axs[1].set_xlabel('Iteration')
-        axs[1].set_ylabel('Average Uncertainty (std)')
-        axs[1].grid(True)
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-        if show:
-            plt.show()
-        if save:
-            plt.savefig(save_fig_title.replace('.png', '_additional.png'))
-        plt.close()
-
-def plot_tree_node(node, ax, color='blue'):
-    """Recursively plot each node in the tree."""
-    if node.parent:
-        ax.plot([node.point[0], node.parent.point[0]], [node.point[1], node.parent.point[1]], color=color)
-    for child in node.children:
-        plot_tree_node(child, ax, color=color)
-
-def plot_path(path, ax, color='red', linewidth=2):
-    """Plot a path as a series of line segments."""
-    x, y = path
-    ax.plot(x, y, color=color, linewidth=linewidth)
+import numpy as np
 
 class TreeNode:
+    """Represents a node in a tree structure."""
     def __init__(self, point, parent=None):
+        """
+        Initializes a new instance of the TreeNode class.
+        
+        Parameters:
+        - point: The (x, y) coordinates of the node.
+        - parent: The parent TreeNode. Default is None.
+        """
         self.point = point
         self.parent = parent
         self.children = []
 
     def add_child(self, child):
+        """Adds a child node to this node."""
         self.children.append(child)
         child.parent = self
 
-class TreeCollection(TreeNode):
+class TreeCollection:
+    """Represents a collection of trees."""
     def __init__(self):
+        """Initializes a new instance of the TreeCollection class."""
         self.trees = []
 
     def add(self, tree):
+        """Adds a tree to the collection."""
         self.trees.append(tree)
 
     def __iter__(self):
@@ -140,3 +39,127 @@ class TreeCollection(TreeNode):
 
     def __len__(self):
         return len(self.trees)
+
+def plot_tree_node(node, ax, color='blue'):
+    """
+    Recursively plots each node in the tree.
+    
+    Parameters:
+    - node: The TreeNode to plot.
+    - ax: The matplotlib axis to plot on.
+    - color: The color of the lines. Default is 'blue'.
+    """
+    if node.parent:
+        ax.plot([node.point[0], node.parent.point[0]], [node.point[1], node.parent.point[1]], color=color)
+    for child in node.children:
+        plot_tree_node(child, ax, color=color)
+
+def plot_path(path, ax, color='red', linewidth=2):
+    """
+    Plots a path as a series of line segments.
+    
+    Parameters:
+    - path: The path to plot as a tuple of (x, y) coordinates.
+    - ax: The matplotlib axis to plot on.
+    - color: The color of the path. Default is 'red'.
+    - linewidth: The width of the path line. Default is 2.
+    """
+    x, y = path
+    ax.plot(x, y, color=color, linewidth=linewidth)
+
+def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list, rounds, save=False, show=False):
+    """
+    Generates and optionally saves or shows various plots related to a scenario.
+    
+    Parameters:
+    - scenario: The scenario object containing X, Y, sources, and workspace_size.
+    - scenario_number: The number identifying the scenario.
+    - z_true: The ground truth data.
+    - z_pred: The predicted data.
+    - std: The standard deviation (uncertainty) data.
+    - path: The path object containing name, beta_t, full_path, obs_wp, and trees.
+    - rmse_list: A list of RMSE values.
+    - rounds: The number of simulation rounds.
+    - save: If True, saves the generated plots. Default is False.
+    - show: If True, displays the generated plots. Default is False.
+    """
+    # Setup plot titles and save paths
+    strategy_title = f'{path.name} Strategy - Scenario {scenario_number}'
+    save_fig_title = f'../images/18/scenario_{scenario_number}_run_{rounds}_path_{path.name}.png'
+    if hasattr(path, 'beta_t'):
+        strategy_title += f' - Beta_t: {path.beta_t}'
+        save_fig_title = f'../images/18/scenario_{scenario_number}_run_{rounds}_path_{path.name}_beta_{path.beta_t}.png'
+    
+    # Determine the levels for log scale based on z_true
+    max_log_value = np.ceil(np.log10(z_true.max())) if z_true.max() != 0 else 1
+    levels = np.logspace(0, max_log_value, int(max_log_value) + 1)
+    cmap = plt.get_cmap('Greens_r', len(levels) - 1)
+    # Initialize figure and axes
+    fig, axs = plt.subplots(2, 2, figsize=(20, 8), constrained_layout=True)
+    fig.suptitle(strategy_title, fontsize=16)
+
+    # Plot Ground Truth
+    cs_true = axs[0, 0].contourf(scenario.X, scenario.Y, z_true, levels=levels, cmap=cmap, norm=colors.BoundaryNorm(levels, ncolors=cmap.N, clip=True))
+    fig.colorbar(cs_true, ax=axs[0, 0], format=ticker.LogFormatterMathtext())
+    axs[0, 0].set_title('Ground Truth')
+    axs[0, 0].set_xlabel('x')
+    axs[0, 0].set_ylabel('y')
+    axs[0, 0].set_facecolor(cmap(0))  # Background color of the lowest contour level
+
+    # Plot Predicted Field
+    cs_pred = axs[0, 1].contourf(scenario.X, scenario.Y, z_pred, levels=levels, cmap=cmap, norm=colors.BoundaryNorm(levels, ncolors=cmap.N, clip=True))
+    fig.colorbar(cs_pred, ax=axs[0, 1], format=ticker.LogFormatterMathtext())
+    axs[0, 1].set_title('Predicted Field')
+    x_new, y_new = path.full_path
+    axs[0, 1].plot(x_new, y_new, 'b-', label=path.name + ' Path')
+    axs[0, 1].plot(path.obs_wp[:, 0], path.obs_wp[:, 1], 'ro', markersize=5)  # Waypoints
+    for source in scenario.sources:
+        axs[0, 1].plot(source[0], source[1], 'rX', markersize=10, label='Source')
+    axs[0, 1].set_facecolor(cmap(0))
+
+    # Plot Uncertainty Field
+    std_reshaped = std.reshape(scenario.X.shape)
+    cs_uncertainty = axs[1, 0].contourf(scenario.X, scenario.Y, std_reshaped, cmap='Reds')
+    axs[1, 0].set_title('Uncertainty Field')
+    axs[1, 0].set_facecolor('pink')
+
+    # Plot RMSE
+    axs[1, 1].errorbar(scenario_number, np.mean(rmse_list), yerr=np.std(rmse_list), fmt='o', linewidth=2, capsize=6)
+    axs[1, 1].set_title(f'{rounds} Run Average RMSE')
+    axs[1, 1].set_xlabel(f'Scenario {scenario_number}')
+    axs[1, 1].set_xticks([scenario_number])
+    axs[1, 1].set_ylabel('RMSE')
+
+    # Show or save the plot as needed
+    if show:
+        plt.show()
+    if save:
+        plt.savefig(save_fig_title)
+    plt.close()
+
+    # Additional RRT-specific plots
+    if "RRT" in path.name:
+        fig, axs = plt.subplots(1, 2, figsize=(20, 6))
+        fig.suptitle(f'Additional Insights for {strategy_title}', fontsize=16)
+
+        # Plot all trees and the final chosen path
+        for tree_root in path.trees:
+            plot_tree_node(tree_root, axs[0], color='lightgray')
+        plot_path(path.full_path, axs[0], color='red', linewidth=3)
+        axs[0].set_title('Final Path with All Trees')
+        axs[0].set_xlim(0, scenario.workspace_size[0])
+        axs[0].set_ylim(0, scenario.workspace_size[1])
+
+        # Plot the reduction in uncertainty over iterations
+        axs[1].plot(path.uncertainty_reduction, marker='o')
+        axs[1].set_title('Reduction in Uncertainty Over Iterations')
+        axs[1].set_xlabel('Iteration')
+        axs[1].set_ylabel('Average Uncertainty (std)')
+        axs[1].grid(True)
+
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        if show:
+            plt.show()
+        if save:
+            plt.savefig(save_fig_title.replace('.png', '_additional.png'))
+        plt.close()

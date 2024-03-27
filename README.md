@@ -58,4 +58,4 @@ This code is in active development and may change frequently. If you have any qu
 
 
 
-
+[![CodeFactor](https://www.codefactor.io/repository/github/franfrancisco9/multi-robot-informative-path-planning/badge)](https://www.codefactor.io/repository/github/franfrancisco9/multi-robot-informative-path-planning)

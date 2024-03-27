@@ -3,6 +3,7 @@ from scipy.spatial import KDTree
 import matplotlib.pyplot as plt
 from informative import InformativePathPlanning
 from tqdm import tqdm
+from path_planning_utils import TreeNode, TreeCollection
 
 class StrategicRRTPathPlanning(InformativePathPlanning):
     def __init__(self, *args, budget_iter=10, **kwargs):
@@ -88,8 +89,6 @@ class StrategicRRTPathPlanning(InformativePathPlanning):
                 pbar.update(budget_portion)
                 self.budget -= budget_portion
                 self.full_path.extend(path)
-                # plot_iteration(self.root, path, self.budget, self.scenario.workspace_size)
-                # self.plot_uncertainty_reduction()
                 # The next tree starts from the end of the chosen path.
                 if path:
                     self.initialize_tree(path[-1])
@@ -97,8 +96,6 @@ class StrategicRRTPathPlanning(InformativePathPlanning):
                     # If no path was selected (shouldn't happen in practice), break the loop to avoid infinite loop.
                     break
             
-        # plot_final(self.trees, self.full_path, self.scenario.workspace_size)
-        # plot_uncertainty_reduction(self.uncertainty_reduction)
         self.obs_wp = np.array(self.obs_wp)
         self.full_path = np.array(self.full_path).reshape(-1, 2).T
         Z_pred, std = self.scenario.predict_spatial_field(self.obs_wp, np.array(self.observations))
@@ -293,71 +290,4 @@ class InformativeRRTPathPlanning(StrategicRRTPathPlanning):
         value = mu_normalized + self.beta_t * std_normalized
         return -value
 
-class TreeNode:
-    def __init__(self, point, parent=None):
-        self.point = point
-        self.parent = parent
-        self.children = []
 
-    def add_child(self, child):
-        self.children.append(child)
-        child.parent = self
-
-class TreeCollection(TreeNode):
-    def __init__(self):
-        self.trees = []
-
-    def add(self, tree):
-        self.trees.append(tree)
-
-    def __iter__(self):
-        return iter(self.trees)
-
-    def __getitem__(self, idx):
-        return self.trees[idx]
-
-    def __len__(self):
-        return len(self.trees)
-
-def plot_tree_node(node, ax, color='blue'):
-    """Recursively plot each node in the tree."""
-    if node.parent:
-        ax.plot([node.point[0], node.parent.point[0]], [node.point[1], node.parent.point[1]], color=color)
-    for child in node.children:
-        plot_tree_node(child, ax, color=color)
-
-def tree_path_Plot(path, ax, color='red', linewidth=2):
-    """Plot a path as a series of line segments."""
-    for i in range(1, len(path)):
-        ax.plot([path[i-1][0], path[i][0]], [path[i-1][1], path[i][1]], color=color, linewidth=linewidth)
-
-def plot_iteration(tree_root, chosen_path, iteration, workspace_size):
-    """Plot a single iteration with the tree and the chosen path."""
-    fig, ax = plt.subplots()
-    plot_tree_node(tree_root, ax)
-    tree_path_Plot(chosen_path, ax)
-    ax.set_title(f'Iteration {iteration}')
-    ax.set_xlim(0, workspace_size[0])
-    ax.set_ylim(0, workspace_size[1])
-    plt.show()
-
-def plot_final(all_trees, final_path, workspace_size):
-    """Plot all trees and the final chosen path."""
-    fig, ax = plt.subplots()
-    for tree_root in all_trees:
-        plot_tree_node(tree_root, ax, color='lightgray')  # Plot all trees in light gray
-    tree_path_Plot(final_path, ax, color='red', linewidth=3)  # Highlight the final path
-    ax.set_title('Final Path with All Trees')
-    ax.set_xlim(0, workspace_size[0])
-    ax.set_ylim(0, workspace_size[1])
-    plt.show()
-
-def plot_unceertainty_reduction(uncertainty_reduction):
-    """Plot the reduction in uncertainty over iterations."""
-    plt.figure(figsize=(10, 6))
-    plt.plot(uncertainty_reduction, marker='o')
-    plt.title('Reduction in Uncertainty Over Iterations')
-    plt.xlabel('Iteration')
-    plt.ylabel('Average Uncertainty (std)')
-    plt.grid(True)
-    plt.show()

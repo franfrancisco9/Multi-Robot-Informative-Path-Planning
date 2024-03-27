@@ -52,6 +52,8 @@ def run_simulations(scenarios, strategy_constructors, args):
     RMSE_lists = {strategy_name: [] for strategy_name in strategy_constructors}
     with tqdm(total=args["rounds"] * len(scenarios) * len(strategy_constructors), desc="Overall Progress") as pbar:
         for scenario_idx, scenario in enumerate(scenarios, start=1):
+            print("#" * 80)
+            RMSE_lists = {strategy_name: [] for strategy_name in strategy_constructors}
             for round_number in range(1, args["rounds"] + 1):
                 for strategy_name, constructor in strategy_constructors.items():
                     strategy = constructor(scenario)
@@ -69,11 +71,24 @@ def main():
     parser = argparse.ArgumentParser(description="Run path planning scenarios.")
     parser.add_argument('-config', '--config', required=True, help="Path to the configuration JSON file.")
     args = parser.parse_args()
-
+    print("#" * 80)
+    print(f"Loading configuration from {args.config}")
     config = load_configuration(args.config)
+    print("Configuration loaded successfully.")
+    print("#" * 80)
+    print("Arguments:")
+    for key, value in config["args"].items():
+        print(f"{key}: {value}")
+    print("#" * 80)
+    print("Loading scenarios and strategies...")
     scenarios = initialize_scenarios(config)
     strategy_instances = initialize_strategies(config, config["args"])
+    print("Scenarios and strategies loaded successfully.")
+    print("#" * 80)
+    print("Running simulations...")
     run_simulations(scenarios, strategy_instances, config["args"])
-
+    print("#" * 80)
+    print("Simulations completed successfully.")
+    print("#" * 80)
 if __name__ == "__main__":
     main()

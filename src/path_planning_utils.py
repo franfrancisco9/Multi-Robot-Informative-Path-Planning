@@ -4,7 +4,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import ticker, colors
 
-
 def helper_plot(scenario, scenario_number, Z_true, Z_pred, std, path, RMSE_list, ROUNDS, save=False, show=False):
     # Titles for clarity
     strategy_title = f'{path.name} Strategy - Scenario {scenario_number}'
@@ -115,89 +114,29 @@ def plot_path(path, ax, color='red', linewidth=2):
     """Plot a path as a series of line segments."""
     x, y = path
     ax.plot(x, y, color=color, linewidth=linewidth)
-    
-def save_iteration(data, iteration, directory="path_planning_iterations"):
-    """Save the state of the path planning process at a given iteration."""
-    os.makedirs(directory, exist_ok=True)
-    filepath = os.path.join(directory, f"iteration_{iteration}.pkl")
-    with open(filepath, "wb") as f:
-        pickle.dump(data, f)
 
-def load_iteration(iteration, directory="path_planning_iterations"):
-    """Load a saved iteration."""
-    filepath = os.path.join(directory, f"iteration_{iteration}.pkl")
-    with open(filepath, "rb") as f:
-        data = pickle.load(f)
-    return data
+class TreeNode:
+    def __init__(self, point, parent=None):
+        self.point = point
+        self.parent = parent
+        self.children = []
 
-def plot_from_iteration(data, scenario_number, save_path=None):
-    """Generate and save or display a plot from saved iteration data."""
-    Z_true = data['Z_true']
-    Z_pred = data['Z_pred']
-    std = data['std']
-    obs_wp = data['obs_wp']
-    full_path = data['full_path']
-    RMSE_list = data['RMSE_list']
+    def add_child(self, child):
+        self.children.append(child)
+        child.parent = self
 
-    # Plotting logic (adapted from the provided helper_plot)
-    # [Insert the adapted plotting logic here]
+class TreeCollection(TreeNode):
+    def __init__(self):
+        self.trees = []
 
-    if save_path:
-        plt.savefig(save_path)
-        plt.close()
-    else:
-        plt.show()
+    def add(self, tree):
+        self.trees.append(tree)
 
-def create_gif_from_iterations(directory="path_planning_iterations", output_filename="path_planning.gif"):
-    """Create a GIF from saved iterations."""
-    # [Add logic to create a GIF from saved iteration plots]
+    def __iter__(self):
+        return iter(self.trees)
 
-def plot_tree(scenario, tree):
-    """
-    Plots the current state of the RRT tree including nodes and edges.
-    """
+    def __getitem__(self, idx):
+        return self.trees[idx]
 
-    plt.figure(figsize=(10, 10))
-    # Plot workspace boundary
-    plt.plot([0, scenario.workspace_size[0], scenario.workspace_size[0], 0, 0],
-                [0, 0, scenario.workspace_size[1], scenario.workspace_size[1], 0], 'k-')
-
-    # Plot all points in the tree
-    plt.plot(tree.data[:, 0], tree.data[:, 1], 'bo', label='Tree Nodes')
-    
-    plt.xlabel('X')
-    plt.ylabel('Y')
-    plt.title('RRT Tree Expansion')
-    plt.grid(True)
-    plt.axis("equal")
-    plt.show()
-
-def evaluate_information_gain(current_std, new_prediction_std):
-    """
-    Evaluates the effectiveness of a new observation position in reducing the overall uncertainty.
-
-    Parameters:
-    - current_std: The current standard deviation across the environment before adding the new observation.
-    - new_prediction_std: The predicted standard deviation across the environment after adding the new observation.
-
-    Returns:
-    - information_gain: A measure of the reduction in uncertainty, where higher values indicate greater reductions.
-    """
-    # Calculate the average standard deviation before and after the new observation
-    avg_current_std = np.mean(current_std)
-    avg_new_prediction_std = np.mean(new_prediction_std)
-
-    # The information gain is the reduction in the average standard deviation
-    information_gain = avg_current_std - avg_new_prediction_std
-
-    return information_gain
-
-# Example usage within a path planning class method:
-# self.save_iteration({
-#     'Z_true': Z_true,
-#     'Z_pred': Z_pred,
-#     'std': std,
-#     'obs_wp': self.obs_wp,
-#     'full_path': self.full_path,
-#     'RMSE_list': RMSE_list,
-# }, iteration)
+    def __len__(self):
+        return len(self.trees)

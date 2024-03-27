@@ -84,15 +84,15 @@ class RadiationField:
 
     def intensity(self, r):
         """Computes intensity at a point r."""
-        I = 0
+        intensity = 0
         for source in self.sources:
             r_n, A_n = np.array(source[:2]), source[2]
             dist = np.linalg.norm(r - r_n)
             if dist <= self.r_s:
-                I += A_n / (4 * np.pi * self.r_s**2)
+                intensity += A_n / (4 * np.pi * self.r_s**2)
             else:
-                I += A_n * self.T / (4 * np.pi * dist**2)
-        return I
+                intensity += A_n * self.T / (4 * np.pi * dist**2)
+        return intensity
 
     def response(self, r):
         """Computes response at a point r."""

@@ -43,11 +43,25 @@ def initialize_strategies(config, args):
         strategy_name: globals()[strategy_name] for strategy_name in config["strategies"]
     }
     strategy_instances = {}
+
     for strategy_name, constructor in strategy_constructors.items():
-        # Filter constructor arguments from both args and the config
-        constructor_args = {k: v for k, v in args.items() if k in constructor.__init__.__code__.co_varnames}
-        strategy_instances[strategy_name] = lambda scenario, constructor=constructor, constructor_args=constructor_args: constructor(scenario, **constructor_args)
+        # Retrieve constructor arguments for the base class and subclass
+        base_args = {}
+        if hasattr(constructor, '__bases__'):
+            for base in constructor.__bases__:
+                if hasattr(base, '__init__'):
+                    base_args.update({k: v for k, v in args.items() if k in base.__init__.__code__.co_varnames})
+
+        # Merge args for the subclass
+        constructor_args = {**base_args, **{k: v for k, v in args.items() if k in constructor.__init__.__code__.co_varnames}}
+
+        def make_strategy(scenario, constructor=constructor, constructor_args=constructor_args):
+            return constructor(scenario, **constructor_args)
+
+        strategy_instances[strategy_name] = make_strategy
+
     return strategy_instances
+
 
 def run_simulations(scenarios, strategy_constructors, args):
     """Run simulations for all scenarios and strategies."""

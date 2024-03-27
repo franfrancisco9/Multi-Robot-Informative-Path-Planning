@@ -27,6 +27,9 @@ def initialize_scenarios(config):
     """Initialize scenarios based on the configuration."""
     scenarios = []
     for scenario_config in config["scenarios"]:
+        # Add seed to the scenario configuration if present in the main configuration
+        if "seed" in config["args"]:
+            scenario_config["params"]["seed"] = config["args"]["seed"]
         scenario = RadiationField(**scenario_config["params"])
         if "specific_params" in scenario_config:
             for key, value in scenario_config["specific_params"].items():

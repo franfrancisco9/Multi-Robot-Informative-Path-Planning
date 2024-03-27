@@ -61,14 +61,12 @@ class RadiationField:
         return kernel
 
     def generate_sources(self, num_sources, workspace_size, intensity_range):
-        """Generates random sources within the workspace."""
-        sources = []
-        for _ in range(num_sources):
-            rand_x = np.random.uniform(0, workspace_size[0])
-            rand_y = np.random.uniform(0, workspace_size[1])
-            rand_A = np.random.uniform(*intensity_range)
-            sources.append([rand_x, rand_y, rand_A])
-        return sources
+        """Generates random sources within the workspace using vectorized operations."""
+        rand_x = np.random.uniform(0, workspace_size[0], num_sources)
+        rand_y = np.random.uniform(0, workspace_size[1], num_sources)
+        rand_A = np.random.uniform(*intensity_range, num_sources)
+        sources = np.column_stack((rand_x, rand_y, rand_A))
+        return sources.tolist()  
 
     def update_source(self, source_index, new_x, new_y, new_A):
         """Updates a specific source's parameters."""

@@ -153,6 +153,7 @@ cython_debug/
 
 # Image folder
 /images
+/runs_review
 
 # Ignore json file except for example_setup.json
 *.json

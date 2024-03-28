@@ -1,6 +1,5 @@
 import numpy as np
 from scipy.spatial import KDTree
-import matplotlib.pyplot as plt
 from informative import BaseInformative
 from tqdm import tqdm
 from path_planning_utils import TreeNode, TreeCollection
@@ -103,6 +102,98 @@ class BaseRRTPathPlanning(BaseInformative):
         else:
             return []
 
+class BaseRRTStarPathPlanning(BaseRRTPathPlanning):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name = "BaseRRTStarPath"
+        self.near_radius = self.d_waypoint_distance  # Radius for finding nearby nodes for rewiring
+    
+    def generate_tree(self, budget_portion):
+        distance_travelled = 0
+        while distance_travelled < budget_portion:
+            x_rand = self.sample_free()  # Random sampling within the workspace
+            x_nearest = self.nearest(x_rand)  # Find the nearest node in the tree
+            x_new = self.steer(x_nearest, x_rand)  # Steer from x_nearest towards x_rand
+            
+            if self.obstacle_free(x_nearest, x_new):
+                X_near = self.near(x_new)  # Find nearby nodes for potential rewiring
+                
+                # Initialize the minimum cost and the best parent node for x_new
+                c_min = self.cost(x_nearest) + self.line_cost(x_nearest, x_new)
+                x_min = x_nearest
+                
+                # Try to find a better parent if any in the X_near set reduces the cost to reach x_new
+                for x_near in X_near:
+                    if self.obstacle_free(x_near, x_new) and \
+                            self.cost(x_near) + self.line_cost(x_near, x_new) < c_min:
+                        c_min = self.cost(x_near) + self.line_cost(x_near, x_new)
+                        x_min = x_near
+                
+                # Add x_new to the tree with x_min as its parent
+                self.add_node(x_new, x_min)
+                distance_travelled += np.linalg.norm(x_new.point - x_min.point)
+                
+                # Rewiring the tree: Check if x_new is a better parent for nodes in X_near
+                for x_near in X_near:
+                    if self.obstacle_free(x_new, x_near) and \
+                            self.cost(x_new) + self.line_cost(x_new, x_near) < self.cost(x_near):
+                        x_parent = x_near.parent
+                        self.rewire(x_near, x_new)
+                
+                if distance_travelled >= budget_portion:
+                    break
+        self.trees.add(self.root)  # Consider all nodes for plotting
+
+    def sample_free(self):
+        """Randomly samples a free point within the workspace."""
+        return np.random.rand(2) * self.scenario.workspace_size
+
+    def nearest(self, x_rand):
+        """Finds the nearest node in the tree to the randomly sampled point."""
+        return min(self.tree_nodes, key=lambda node: np.linalg.norm(node.point - x_rand))
+
+    def steer(self, x_nearest, x_rand, step_size=1.0):
+        """Steers from x_nearest towards x_rand."""
+        direction = x_rand - x_nearest.point
+        distance = np.linalg.norm(direction)
+        direction = direction / distance if distance > 0 else direction
+        new_point = x_nearest.point + min(step_size, distance) * direction
+        return TreeNode(new_point)
+
+    def obstacle_free(self, x1, x2):
+        """Checks if the path between two nodes is free of obstacles."""
+        # Implement obstacle checking logic here
+        return True  # Placeholder implementation
+
+    def near(self, x_new):
+        """Finds nodes in the vicinity of x_new for potential rewiring."""
+        # Implement logic to find nearby nodes within a certain radius
+        return [node for node in self.tree_nodes if np.linalg.norm(node.point - x_new.point) < self.near_radius]
+
+    def cost(self, node):
+        """Calculates the cost to reach a given node from the root."""
+        cost = 0
+        while node.parent is not None:
+            cost += np.linalg.norm(node.point - node.parent.point)
+            node = node.parent
+        return cost
+
+    def line_cost(self, x1, x2):
+        """Calculates the cost of a direct line between two nodes."""
+        return np.linalg.norm(x1.point - x2.point)
+
+    def add_node(self, x_new, x_parent):
+        """Adds a new node to the tree."""
+        x_parent.children.append(x_new)
+        x_new.parent = x_parent
+        self.tree_nodes.append(x_new)
+
+    def rewire(self, x_near, x_new):
+        """Rewires x_near to have x_new as its parent if it reduces the path cost."""
+        x_near.parent.children.remove(x_near)
+        x_near.parent = x_new
+        x_new.children.append(x_near)
+
 class StrategicRRTPathPlanning(BaseRRTPathPlanning):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -126,7 +217,6 @@ class StrategicRRTPathPlanning(BaseRRTPathPlanning):
         path.reverse()  # Reverse to start from root
         return path
     
-
 class BiasRRTPathPlanning(BaseRRTPathPlanning):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -290,4 +380,42 @@ class InformativeRRTPathPlanning(StrategicRRTPathPlanning):
         value = mu_normalized + self.beta_t * std_normalized
         return -value
 
+class InformativeRRTStarPathPlanning(BaseRRTStarPathPlanning):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name = "InformativeRRTStarPath"
+        # Override the node selection strategy
+        self.node_selection_key = self.informative_node_selection_key
 
+    def informative_node_selection_key(self, node, random_point):
+        """Key function for selecting nodes based on predicted mu values."""
+        # This example uses predicted mu values as the key
+        mu, std = self.scenario.gp.predict(np.array([node.point]), return_std=True)
+        if np.std(mu) == 0:
+            mu_normalized = mu
+        else:
+            mu_normalized = (mu - np.mean(mu)) / np.std(mu)
+        if np.std(std) == 0:
+            std_normalized = std
+        else:
+            std_normalized = (std - np.mean(std)) / np.std(std)
+        value = mu_normalized + self.beta_t * std_normalized
+        return -value
+        
+    def select_path(self):
+        leaf_nodes = [node for node in self.tree_nodes if not node.children]
+        leaf_points = np.array([node.point for node in leaf_nodes])
+        _, stds = self.scenario.gp.predict(leaf_points, return_std=True)
+        self.uncertainty_reduction.append(np.mean(stds))
+        max_std_idx = np.argmax(stds)
+        selected_leaf = leaf_nodes[max_std_idx]
+
+        # Trace back to root from the selected leaf
+        path = []
+        current_node = selected_leaf
+        
+        while current_node is not None:
+            path.append(current_node.point)
+            current_node = current_node.parent
+        path.reverse()  # Reverse to start from root
+        return path

@@ -5,7 +5,7 @@ import os
 
 class TreeNode:
     """Represents a node in a tree structure."""
-    def __init__(self, point, parent=None):
+    def __init__(self, point, parent=None, cost=0):
         """
         Initializes a new instance of the TreeNode class.
         
@@ -16,6 +16,7 @@ class TreeNode:
         self.point = point
         self.parent = parent
         self.children = []
+        self.cost = cost
 
     def add_child(self, child):
         """Adds a child node to this node."""
@@ -68,7 +69,20 @@ def plot_path(path, ax, color='red', linewidth=2):
     x, y = path
     ax.plot(x, y, color=color, linewidth=linewidth)
 
-def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list, rounds, save=False, show=False):
+def run_number_from_folder():
+    """
+    Checks in ../images/ for the latest run number and returns the next run number.
+    """
+    folder = '../images'
+    if not os.path.exists(folder):
+        return 1
+    # check the current folders names 
+    existing_folders = [f for f in os.listdir(folder) if os.path.isdir(os.path.join(folder, f))]
+    run_numbers = [int(f) for f in existing_folders if f.isdigit()]
+    next_run_number = max(run_numbers) + 1 if run_numbers else 1
+    return next_run_number
+
+def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list, rounds, run_number, save=False, show=False):
     """
     Generates and optionally saves or shows various plots related to a scenario.
     
@@ -85,14 +99,17 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
     - show: If True, displays the generated plots. Default is False.
     """
     # Setup plot titles and save paths
-    strategy_title = f'{path.name} Strategy - Scenario {scenario_number}'´
+    strategy_title = f'{path.name} Strategy - Scenario {scenario_number}'
     # if not present create images folder
     if not os.path.exists('../images'):
         os.makedirs('../images')
-    save_fig_title = f'../images/run_{rounds}_scenario_{scenario_number}_path_{path.name}.png'
+    folder = f'images/{run_number}'
+    if not os.path.exists(f'../{folder}'):
+        os.makedirs(f'../{folder}')
+    save_fig_title = f'../{folder}/run_{rounds}_scenario_{scenario_number}_path_{path.name}.png'
     if hasattr(path, 'beta_t'):
         strategy_title += f' - Beta_t: {path.beta_t}'
-        save_fig_title = f'../images/run_{rounds}_scenario_{scenario_number}_path_{path.name}_beta_{path.beta_t}.png'
+        save_fig_title = f'../{folder}/run_{rounds}_scenario_{scenario_number}_path_{path.name}_beta_{path.beta_t}.png'
     
     # Determine the levels for log scale based on z_true
     max_log_value = np.ceil(np.log10(z_true.max())) if z_true.max() != 0 else 1
@@ -167,3 +184,42 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
         if show:
             plt.show()
         plt.close()
+
+def calculate_differential_entropy(std_devs):
+    """
+    Calculate the differential entropy given a list of standard deviations.
+    
+    Parameters:
+    - std_devs: An array of standard deviation values for each prediction on the grid.
+    
+    Returns:
+    - Differential entropy in bits.
+    """
+    pi_e = np.pi * np.e  # Product of pi and Euler's number
+    # Compute the sum of log(sigma * sqrt(2 * pi * e)) for each standard deviation
+    entropy_sum = np.sum(np.log(std_devs * np.sqrt(2 * pi_e)))
+    # Convert the sum from nats to bits and normalize by the number of predictions
+    differential_entropy = entropy_sum / (np.log(2))
+    return differential_entropy
+
+def save_run_info(run_number, rmse_list, entropy_list, args, folder_path="../runs_review"):
+    os.makedirs(folder_path, exist_ok=True)
+    filename = os.path.join(folder_path, f"run_{run_number}.txt")
+
+    with open(filename, 'w') as f:
+        f.write("Run Summary\n")
+        f.write("=" * 40 + "\n\nArguments:\n")
+        for key, value in args.items():
+            f.write(f"{key}: {value}\n")
+        
+        for scenario, scenario_rmse in rmse_list.items():
+            f.write(f"\n{scenario} RMSE:\n")
+            for strategy, values in scenario_rmse.items():
+                f.write(f"{strategy}: Avg RMSE = {np.mean(values):.4f}\n")
+        
+        for scenario, scenario_entropy in entropy_list.items():
+            f.write(f"\n{scenario} Differential Entropy:\n")
+            for strategy, values in scenario_entropy.items():
+                f.write(f"{strategy}: Avg Entropy = {np.mean(values):.4f}\n")
+    
+    print(f"Run information saved to {filename}")

@@ -49,12 +49,15 @@ def initialize_strategies(config, args):
         base_args = {}
         if hasattr(constructor, '__bases__'):
             for base in constructor.__bases__:
-                if hasattr(base, '__init__'):
+                if hasattr(base, '__init__') and hasattr(base.__init__, '__code__'):
                     base_args.update({k: v for k, v in args.items() if k in base.__init__.__code__.co_varnames})
+                    for base_base in base.__bases__:
+                        if hasattr(base_base, '__init__') and hasattr(base_base.__init__, '__code__'):
+                            base_args.update({k: v for k, v in args.items() if k in base_base.__init__.__code__.co_varnames})
 
         # Merge args for the subclass
         constructor_args = {**base_args, **{k: v for k, v in args.items() if k in constructor.__init__.__code__.co_varnames}}
-
+        print(f"Strategy: {strategy_name}, Args: {constructor_args}")
         def make_strategy(scenario, constructor=constructor, constructor_args=constructor_args):
             return constructor(scenario, **constructor_args)
 
@@ -82,10 +85,12 @@ def run_simulations(scenarios, strategy_constructors, args):
                     if round_number == args["rounds"]:
                         helper_plot(scenario, scenario_idx, Z_true, Z_pred, std, strategy, RMSE_lists[strategy_name], args["rounds"], save=args["save"], show=args["show"])
                     pbar.update(1)
-            # print current RMSE for each strategy organized from lowest to highest
+            # print current RMSE for each strategy organized from lowest to highest regarding the average RMSE
             print(f"Scenario {scenario_idx} RMSE:")
-            for strategy_name in sorted(RMSE_lists, key=RMSE_lists.get):
-                print(f"{strategy_name}: {RMSE_lists[strategy_name]}")	
+            # sort the RMSE lists based on the average RMSE
+            sorted_RMSE = sorted(RMSE_lists.items(), key=lambda x: np.mean(x[1]))
+            for strategy_name, RMSE_list in sorted_RMSE:
+                print(f"{strategy_name}: {np.mean(RMSE_list)}")
 
 def main():
     parser = argparse.ArgumentParser(description="Run path planning scenarios.")

@@ -5,7 +5,7 @@ Boustrophedon path planner.
 import numpy as np
 from bspline import bspline
 
-class Boustrophedon:
+class Boustrophedon():
     def __init__(self, scenario, d_waypoint_distance=2.5, budget=375, line_spacing=5):
         """
         Initializes a Boustrophedon path planner.

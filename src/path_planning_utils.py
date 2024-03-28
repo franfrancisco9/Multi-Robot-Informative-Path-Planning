@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 from matplotlib import ticker, colors
 import numpy as np
+import os 
 
 class TreeNode:
     """Represents a node in a tree structure."""
@@ -84,11 +85,14 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
     - show: If True, displays the generated plots. Default is False.
     """
     # Setup plot titles and save paths
-    strategy_title = f'{path.name} Strategy - Scenario {scenario_number}'
-    save_fig_title = f'../images/18/scenario_{scenario_number}_run_{rounds}_path_{path.name}.png'
+    strategy_title = f'{path.name} Strategy - Scenario {scenario_number}'´
+    # if not present create images folder
+    if not os.path.exists('../images'):
+        os.makedirs('../images')
+    save_fig_title = f'../images/run_{rounds}_scenario_{scenario_number}_path_{path.name}.png'
     if hasattr(path, 'beta_t'):
         strategy_title += f' - Beta_t: {path.beta_t}'
-        save_fig_title = f'../images/18/scenario_{scenario_number}_run_{rounds}_path_{path.name}_beta_{path.beta_t}.png'
+        save_fig_title = f'../images/run_{rounds}_scenario_{scenario_number}_path_{path.name}_beta_{path.beta_t}.png'
     
     # Determine the levels for log scale based on z_true
     max_log_value = np.ceil(np.log10(z_true.max())) if z_true.max() != 0 else 1

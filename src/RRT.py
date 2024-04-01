@@ -389,33 +389,7 @@ class InformativeRRTStarPathPlanning(BaseRRTStarPathPlanning):
 
     def informative_node_selection_key(self, node, random_point):
         """Key function for selecting nodes based on predicted mu values."""
-        # This example uses predicted mu values as the key
-        mu, std = self.scenario.gp.predict(np.array([node.point]), return_std=True)
-        if np.std(mu) == 0:
-            mu_normalized = mu
-        else:
-            mu_normalized = (mu - np.mean(mu)) / np.std(mu)
-        if np.std(std) == 0:
-            std_normalized = std
-        else:
-            std_normalized = (std - np.mean(std)) / np.std(std)
-        value = mu_normalized + self.beta_t * std_normalized
-        return -value
+        InformativeRRTPathPlanning.informative_node_selection_key(self, node, random_point)
         
     def select_path(self):
-        leaf_nodes = [node for node in self.tree_nodes if not node.children]
-        leaf_points = np.array([node.point for node in leaf_nodes])
-        _, stds = self.scenario.gp.predict(leaf_points, return_std=True)
-        self.uncertainty_reduction.append(np.mean(stds))
-        max_std_idx = np.argmax(stds)
-        selected_leaf = leaf_nodes[max_std_idx]
-
-        # Trace back to root from the selected leaf
-        path = []
-        current_node = selected_leaf
-        
-        while current_node is not None:
-            path.append(current_node.point)
-            current_node = current_node.parent
-        path.reverse()  # Reverse to start from root
-        return path
+        StrategicRRTPathPlanning.select_path(self)

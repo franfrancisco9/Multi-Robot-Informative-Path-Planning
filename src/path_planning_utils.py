@@ -214,12 +214,12 @@ def save_run_info(run_number, rmse_list, entropy_list, args, folder_path="../run
         
         for scenario, scenario_rmse in rmse_list.items():
             f.write(f"\n{scenario} RMSE:\n")
-            for strategy, values in scenario_rmse.items():
+            for strategy, values in sorted(scenario_rmse.items()):
                 f.write(f"{strategy}: Avg RMSE = {np.mean(values):.4f}\n")
         
         for scenario, scenario_entropy in entropy_list.items():
             f.write(f"\n{scenario} Differential Entropy:\n")
-            for strategy, values in scenario_entropy.items():
+            for strategy, values in sorted(scenario_entropy.items()):
                 f.write(f"{strategy}: Avg Entropy = {np.mean(values):.4f}\n")
     
     print(f"Run information saved to {filename}")

@@ -86,7 +86,10 @@ def initialize_strategies(config, args):
 
 def run_simulations(scenarios, strategy_instances, args):
     """Run simulations for all scenarios and strategies."""
-    run_number = run_number_from_folder()
+    if args["run_number"] == -1:
+        run_number = run_number_from_folder()
+    else:
+        run_number = args["run_number"]
     print(f"Run number: {run_number}")
     RMSE_per_scenario = {}
     Diff_Entropy_per_scenario = {}

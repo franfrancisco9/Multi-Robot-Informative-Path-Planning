@@ -46,7 +46,8 @@
       "seed": 95789,
       "budget": 375,
       "d_waypoint_distance": 2.5,
-      "budget_iter": 10
+      "budget_iter": 10,
+      "run_number": -1
     }
   }
   

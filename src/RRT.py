@@ -64,12 +64,16 @@ class BaseRRTPathPlanning(BaseInformative):
                 # print(f"Remaining budget: {self.budget}")
                 self.generate_tree(budget_portion)
                 path = self.select_path()
-
+                # calcualte budget spent in path 
+                budget_spent = 0
+                for i in range(1, len(path)):
+                    budget_spent += np.linalg.norm(path[i] - path[i-1])
+                # print(f"Budget spent in path: {budget_spent}")
                 # Only the first point of the path (closest to the root) should update the model
                 # to simulate the agent moving along this path.
                 self.update_observations_and_model(path)
-                pbar.update(budget_portion)
-                self.budget -= budget_portion
+                pbar.update(budget_spent)
+                self.budget -= budget_spent
                 self.full_path.extend(path)
                 # The next tree starts from the end of the chosen path.
                 if path:
@@ -389,7 +393,9 @@ class InformativeRRTStarPathPlanning(BaseRRTStarPathPlanning):
 
     def informative_node_selection_key(self, node, random_point):
         """Key function for selecting nodes based on predicted mu values."""
-        InformativeRRTPathPlanning.informative_node_selection_key(self, node, random_point)
-        
+        node_selection = InformativeRRTPathPlanning.informative_node_selection_key
+        return node_selection(self, node, random_point)
+    
     def select_path(self):
-        StrategicRRTPathPlanning.select_path(self)
+        path_selection = StrategicRRTPathPlanning.select_path
+        return path_selection(self)

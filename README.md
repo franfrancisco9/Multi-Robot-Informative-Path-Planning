@@ -51,6 +51,7 @@ Key Components of the Configuration:
     - `budget`: Budget for path planning.
     - `d_waypoint_distance`: Waypoint distance.
     - `budget_iter`: Budget iterations for RRT strategies.
+    - `run_number`: Number of the run to control the folder name for saving the results.
 
 ## Note
 

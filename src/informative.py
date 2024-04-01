@@ -99,7 +99,7 @@ class InformativePathPlanning(BaseInformative):
         self.obs_wp.append(point)
         
         # Update GP model conditionally to reduce computation
-        if len(self.observations) % 5 == 0:  # Example strategy: update every 5 observations
+        if len(self.observations) % 10 == 0:  # Example strategy: update every 5 observations
             waypoints = np.array(self.obs_wp)
             measurements = np.array(self.observations)
             self.scenario.gp.fit(waypoints, np.log10(measurements))

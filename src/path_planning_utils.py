@@ -156,6 +156,7 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
         plt.savefig(save_fig_title)
     if show:
         plt.show()
+    distance_histogram(scenario, path.obs_wp, save_fig_title.replace('.png', '_histogram.png'), show=show)
     plt.close()
 
     # Additional RRT-specific plots
@@ -201,6 +202,35 @@ def calculate_differential_entropy(std_devs):
     # Convert the sum from nats to bits and normalize by the number of predictions
     differential_entropy = entropy_sum / (np.log(2))
     return differential_entropy
+
+def distance_histogram(scenario, obs_wp, save_fig_title=None, show=False):
+    """
+    Plots and shows the Histogram of the distances between each source and the observations in O.
+    
+    Parameters:
+    - scenario: The scenario object containing sources and workspace_size.
+    - obs_wp: The observed waypoints.
+    """
+    # Compute the distances between each source and the observations
+    distances = []
+    for source in scenario.sources:
+        for obs in obs_wp:
+            distances.append(np.linalg.norm(source[:2] - obs))
+    # new figure
+    plt.figure(figsize=(10, 6))
+    # Plot the histogram of distances
+    plt.hist(distances, bins=20, color='skyblue', edgecolor='black')
+    plt.title('Histogram of Distances between Sources and Observations')
+    plt.xlabel('Distance')
+    plt.ylabel('Frequency')
+    plt.grid(axis='y', alpha=0.75)
+    if save_fig_title:
+        plt.savefig(save_fig_title)
+    if show:
+        plt.show()
+
+
+
 
 def save_run_info(run_number, rmse_list, entropy_list, args, folder_path="../runs_review"):
     os.makedirs(folder_path, exist_ok=True)

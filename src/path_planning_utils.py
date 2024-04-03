@@ -229,9 +229,6 @@ def distance_histogram(scenario, obs_wp, save_fig_title=None, show=False):
     if show:
         plt.show()
 
-
-
-
 def save_run_info(run_number, rmse_list, entropy_list, args, folder_path="../runs_review"):
     os.makedirs(folder_path, exist_ok=True)
     filename = os.path.join(folder_path, f"run_{run_number}.txt")
@@ -244,12 +241,199 @@ def save_run_info(run_number, rmse_list, entropy_list, args, folder_path="../run
         
         for scenario, scenario_rmse in rmse_list.items():
             f.write(f"\n{scenario} RMSE:\n")
-            for strategy, values in sorted(scenario_rmse.items()):
+            # order by the average of the values
+            for strategy, values in sorted(scenario_rmse.items(), key=lambda x: np.mean(x[1])):
                 f.write(f"{strategy}: Avg RMSE = {np.mean(values):.4f}\n")
         
         for scenario, scenario_entropy in entropy_list.items():
             f.write(f"\n{scenario} Differential Entropy:\n")
-            for strategy, values in sorted(scenario_entropy.items()):
+            # order by the average of the values
+            for strategy, values in sorted(scenario_entropy.items(), key=lambda x: np.mean(x[1])):
                 f.write(f"{strategy}: Avg Entropy = {np.mean(values):.4f}\n")
     
     print(f"Run information saved to {filename}")
+
+import numpy as np
+from scipy.optimize import minimize
+from scipy.stats import norm
+from radiation import RadiationField
+
+intensity = RadiationField(workspace_size=(40, 40), num_sources=1).intensity
+
+# The estimate sources function
+
+# l(z| theta ) = prod (i=1 to m) P(z_j;lambda_j(theta))
+# z are the m measurements (obs_vals)
+# P(z;func) = exp(-func)func^z/z! (Poission distribution) evaluated at
+# each z with func = lambda_j(theta) = lambda_b + sum (i=1 to r) alpha_i/d_ji
+# where r is the number of sources, d_ji is the distance between the jth observation and the ith source
+# lambda_b is the average count due to background radiation and we assume it is known
+
+# the goals is to use MLE to maximize the likelihood function such that we find the vector of~
+# theta sources such that theta_hat_ML = arg max _theta l(z|theta)
+# and to estimate the number of sources we consider M = {0, ..., M_max} and the best number of sources is
+# the best beta_r = log p(z|theta_hat_ml,r) - 1/2 log |J(theta_hat_ml,r)| and J(theta) is the Fisher information matrix
+
+import numpy as np
+from scipy.optimize import minimize
+from scipy.stats import poisson
+import cma
+
+def poisson_log_likelihood(theta, obs_wp, obs_vals, lambda_b, M, alpha=0.001):
+    converted_obs_vals = np.round(obs_vals).astype(int)
+
+    log_likelihood = 1.0
+    sources = theta.reshape((M, 3))
+    for obs_index, (x_obs, y_obs) in enumerate(obs_wp):
+        lambda_j = lambda_b
+        for source in sources:
+            x_source, y_source, source_intensity = source
+            d_ji = np.sqrt((x_obs - x_source)**2 + (y_obs - y_source)**2)
+            # Convert source intensity to expected counts at this point by applying alpha
+            alpha_i = source_intensity 
+            lambda_j += alpha_i / max(d_ji**2, 1e-6)
+
+        # Use converted_obs_vals which are now in the appropriate count format
+        log_pmf = poisson.logpmf(converted_obs_vals[obs_index], lambda_j)
+        log_likelihood += log_pmf
+
+    return -log_likelihood  # Minimization in optimization routines
+
+def estimate_parameters(obs_wp, obs_vals, lambda_b, M):
+    # Initial guess and bounds adjusted for using the log of intensity values
+    sigma = 0.5  # Step size
+    lower_bounds = [0, 0, 1e3] * M  # Log of intensity lower bound
+    upper_bounds = [40, 40, 1e5] * M  # Log of intensity upper bound
+    initial_guess = np.random.uniform(lower_bounds, upper_bounds)
+    es = cma.CMAEvolutionStrategy(initial_guess, sigma, {'bounds': [lower_bounds, upper_bounds]})
+    es.optimize(lambda x: poisson_log_likelihood(x, obs_wp, obs_vals, lambda_b, M))
+
+    # Best solution with exponentiated intensities
+    xbest_transformed = es.result.xbest
+    return xbest_transformed
+
+def estimate_parameters_nelder_mead(obs_wp, obs_vals, lambda_b, M):
+    initial_guess = np.concatenate([np.random.uniform(0, 40, 2*M), np.random.uniform(1e3, 1e5, M)])
+    result = minimize(lambda theta: -poisson_log_likelihood(theta, obs_wp, obs_vals, lambda_b, M),
+                      initial_guess, method='l-bfgs-b', bounds=[(0, 40)] * 2*M + [(1e3, 1e5)] * M)
+    if result.success:
+        estimated_theta = result.x
+        return estimated_theta
+    else:
+        return None
+    
+def compute_FIM(obs_wp, estimated_theta, lambda_b, M):
+    FIM = np.zeros((3 * M, 3 * M))
+    epsilon = 1e-6
+    # Extract source positions and intensities from estimated_theta
+    source_positions = estimated_theta[:2*M].reshape((M, 2))
+    source_intensities = estimated_theta[2*M:]
+
+    for j, obs_point in enumerate(obs_wp):
+        for i in range(M):
+            x_i, y_i = source_positions[i]
+            alpha_i = source_intensities[i]
+            d_ji = max(epsilon, np.sqrt((obs_point[0] - x_i)**2 + (obs_point[1] - y_i)**2))
+            d_ji_squared = d_ji**2
+
+            # Compute partial derivatives as per the paper
+            d_lambda_j_d_xi = (2 * alpha_i * (obs_point[0] - x_i)) / d_ji_squared
+            d_lambda_j_d_yi = (2 * alpha_i * (obs_point[1] - y_i)) / d_ji_squared
+            d_lambda_j_d_alpha_i = 1 / d_ji
+
+            # Stack the derivatives for all sources to form the gradient
+            gradient = np.zeros(3 * M)
+            gradient[3*i] = d_lambda_j_d_xi
+            gradient[3*i + 1] = d_lambda_j_d_yi
+            gradient[3*i + 2] = d_lambda_j_d_alpha_i
+
+            # Calculate lambda_j for the current observation and source parameters
+            lambda_j = lambda_b
+            for k, (x_k, y_k) in enumerate(source_positions):
+                alpha_k = source_intensities[k]
+                d_jk = max(epsilon, np.sqrt((obs_point[0] - x_k)**2 + (obs_point[1] - y_k)**2))
+                lambda_j += alpha_k / d_jk**2
+
+            # Update the FIM with the outer product of the gradient, scaled by 1/lambda_j
+            FIM += np.outer(gradient, gradient) / lambda_j
+
+    return FIM
+
+def estimate_sources(obs_wp, obs_vals, lambda_b, M_max):
+    best_score = -np.inf  # Initialize to negative infinity for maximization
+    best_model = None
+    best_M = None
+    epsilon = 1e-6
+    for M in range(1, M_max + 1):
+        bounds = [(0, np.max(obs_wp)), (0, np.max(obs_wp))] * M + [(1e3, 1e5)] * M
+        estimated_theta = estimate_parameters_nelder_mead(obs_wp, obs_vals, lambda_b, M)
+        if estimated_theta is None:
+            estimated_theta = np.array([0, 0, 1e3] * M)
+        print(f"Estimated theta: {estimated_theta}")
+        if estimated_theta is not None:
+            # Compute the likelihood at the estimated parameters, ensure it's the likelihood, not negative log-likelihood
+            # Since the poisson_log_likelihood function returns the negative log-likelihood for minimization, negate its result.
+            log_likelihood = -(poisson_log_likelihood(estimated_theta, obs_wp, obs_vals, lambda_b, M))
+            
+            # Calculate the Fisher Information Matrix
+            FIM = compute_FIM(obs_wp, estimated_theta, lambda_b, M)
+
+            # Ensure the determinant of FIM is positive to avoid taking log of a non-positive number
+            det_FIM = np.linalg.det(FIM)
+            if det_FIM <= 0:
+                print("Warning: Determinant of FIM is non-positive, adjusting to epsilon.")
+                det_FIM = -det_FIM + epsilon
+
+            # Compute the penalty term using the determinant of the Fisher Information Matrix
+            penalty = -0.5 * np.log(det_FIM)
+
+            # Calculate beta_r according to the formula
+            beta_r = log_likelihood + penalty  # Note: log_likelihood is already the log of the probability, not negative
+
+            print(f"Number of sources: {M}, Beta_r: {beta_r}")
+            if beta_r > best_score:
+                best_score = beta_r
+                best_model = estimated_theta
+                best_M = M
+        else:
+            estimated_theta = np.array([0, 0, 1e3] * M)
+
+    return best_model, best_M
+
+if __name__ == "__main__":
+    from radiation import RadiationField
+    from boustrophedon import Boustrophedon
+
+    # Example usage
+    scenario = RadiationField(workspace_size=(40, 40), num_sources=2)
+    scenario.update_source(0, 20, 20, 1e4)
+    boust = Boustrophedon(scenario, budget=375)
+
+    Z_pred, std = boust.run()
+    Z_true = scenario.ground_truth()
+
+    RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
+
+    helper_plot(scenario, 1, Z_true, Z_pred, std, boust, RMSE, 1, 1, save=False, show=False)
+    # Example usage (placeholders for obs_wp and obs_vals)
+    print("Boust observation waypoints:", boust.obs_wp)
+    print("Boust observation values:", boust.measurements)
+
+    estimated_locs, estimated_num_sources = estimate_sources(boust.obs_wp, boust.measurements, 1, M_max=2)
+    # rearrange estimated_locs such that every 3 are an array
+    estimated_locs = estimated_locs.reshape((-1, 3))
+    print("Estimated Locations:", estimated_locs)
+    print("Estimated Number of Sources:", estimated_num_sources)
+    print("Actual Sources:", scenario.sources)
+    # Errors 
+    for i, source in enumerate(scenario.sources):
+        if i >= estimated_num_sources:
+            print(f"Source {i+1} Error: Not estimated")
+        else:
+            print(f"X Error: {abs(source[0] - estimated_locs[i][0])}")
+            print(f"Y Error: {abs(source[1] - estimated_locs[i][1])}")
+            print(f"Norm error: {np.linalg.norm([source[0] - estimated_locs[i][0], source[1] - estimated_locs[i][1]])}")
+            print(f"Intensity Error: {abs(source[2] - estimated_locs[i][2])}")
+
+    # Number of sources error
+    print(f"Number of Sources Error: {abs(len(scenario.sources) - estimated_num_sources)}")

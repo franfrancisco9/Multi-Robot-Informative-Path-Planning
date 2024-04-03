@@ -60,5 +60,5 @@ class Boustrophedon():
             distance_covered += dist
         self.obs_wp = np.array(self.obs_wp)
         self.full_path = p[:i+1].T
-        measurements = self.scenario.simulate_measurements(self.obs_wp)
-        return self.scenario.predict_spatial_field(self.obs_wp, measurements)
+        self.measurements = self.scenario.simulate_measurements(self.obs_wp)
+        return self.scenario.predict_spatial_field(self.obs_wp, self.measurements)

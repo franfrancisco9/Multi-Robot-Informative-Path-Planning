@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 from matplotlib import ticker, colors
 import numpy as np
 import os 
+from tqdm import tqdm
 
 class TreeNode:
     """Represents a node in a tree structure."""
@@ -282,8 +283,8 @@ import cma
 def poisson_log_likelihood(theta, obs_wp, obs_vals, lambda_b, M, alpha=0.001):
     converted_obs_vals = np.round(obs_vals).astype(int)
 
-    log_likelihood = 1.0
-    sources = theta.reshape((M, 3))
+    log_likelihood = 0.0
+    sources = theta.reshape((M, 3)) if len(theta) == 3 * M else np.array([theta])
     for obs_index, (x_obs, y_obs) in enumerate(obs_wp):
         lambda_j = lambda_b
         for source in sources:
@@ -298,6 +299,9 @@ def poisson_log_likelihood(theta, obs_wp, obs_vals, lambda_b, M, alpha=0.001):
         log_likelihood += log_pmf
 
     return -log_likelihood  # Minimization in optimization routines
+
+import numpy as np
+from scipy.stats import poisson
 
 def estimate_parameters(obs_wp, obs_vals, lambda_b, M):
     # Initial guess and bounds adjusted for using the log of intensity values
@@ -400,13 +404,135 @@ def estimate_sources(obs_wp, obs_vals, lambda_b, M_max):
 
     return best_model, best_M
 
+def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, M, n_samples, s_stages, prior_dist, alpha=0.001):
+    # Step 1: Select γ1, ..., γs (these are parameters that control the tightness of the approximation)
+    gammas = np.linspace(0.1, 1, s_stages)
+    # print("Gammas:", gammas)
+    obs_vals = np.round(obs_vals).astype(int)
+    # Step 2: Draw initial samples from the prior distribution
+    theta_samples = np.column_stack([dist.rvs(n_samples) for dist in prior_dist])
+    # print("Initial theta samples:", theta_samples)
+
+    def calc_weights(theta, gamma, obs_wp, obs_vals, lambda_b, alpha):
+        log_weights = np.zeros(n_samples)
+        M = theta.shape[1] // 3
+        # print("M:", M)
+        # print("Gamma:", gamma)
+        max_log_weight = -np.inf  # Initialize with the lowest possible value
+        converted_obs_vals = np.round(obs_vals).astype(int)
+        for i in range(n_samples):
+            # print("Sample:", i)
+            sample_log_weight = 0.0
+            for obs_index, (x_obs, y_obs) in enumerate(obs_wp):
+                lambda_j = lambda_b
+                for source_index in range(M):
+                    x_source, y_source, source_intensity = theta[i, source_index*3:(source_index+1)*3]
+                    d_ji = max(np.sqrt((x_obs - x_source)**2 + (y_obs - y_source)**2), 1e-6)
+                    lambda_j += source_intensity / d_ji**2
+                
+                log_pmf = poisson.logpmf(converted_obs_vals[obs_index], lambda_j)
+                # print("Log PMF:", log_pmf)
+                sample_log_weight += log_pmf 
+                # print("Sample log weight:", sample_log_weight)
+                
+            
+            sample_log_weight = gamma * sample_log_weight
+            # print("Sample log weight:", sample_log_weight)
+            log_weights[i] = sample_log_weight
+            # print("Sample log weight:", sample_log_weight)
+            max_log_weight = max(max_log_weight, sample_log_weight)
+
+        # Apply log-sum-exp trick to prevent underflow when exponentiating
+        weights = np.exp(log_weights - max_log_weight)
+        # print("Weights:", weights)
+        # Normalize weights
+        weight_sum = np.sum(weights)
+        if weight_sum > 0:
+            weights /= weight_sum
+        else:
+            weights = np.ones(n_samples) / n_samples
+        # print("Normalized weights:", weights)
+        return weights
+
+    # Step 3: Iterate through the stages
+    with tqdm(total=s_stages) as pbar:
+        for k, gamma in enumerate(gammas):
+            pbar.set_description(f"Stage {k+1}/{s_stages}")
+            pbar.update(1)
+            # a) Compute the weights
+            weights = calc_weights(theta_samples, gamma, obs_wp, obs_vals, lambda_b, alpha)
+            # replace NaNs with 0
+            weights = np.nan_to_num(weights)
+            # b) Resample according to the weights
+            indices = np.random.choice(np.arange(n_samples), size=n_samples, replace=True, p=weights)
+            theta_samples = theta_samples[indices]
+            
+            # c) Perturb the resampled particles
+            perturbations = np.random.normal(0, alpha, size=theta_samples.shape)
+            theta_samples += perturbations
+            print("Theta Estimate mean:", np.mean(theta_samples, axis=0))
+
+        # Step 4: Compute the parameter estimate as the mean of the samples
+        theta_estimate = np.mean(theta_samples, axis=0)
+
+        return theta_estimate
+
+def calculate_bic(log_likelihood, num_params, num_data_points):
+    """Calculate the Bayesian Information Criterion."""
+    bic = 2 * log_likelihood + num_params * np.log(num_data_points)
+    return bic
+
+def estimate_sources_bayesian(obs_wp, obs_vals, lambda_b, max_sources, n_samples, s_stages):
+    best_bic = -np.inf
+    best_estimate = None
+    best_M = 0
+    
+    for M in range(1, max_sources + 1):
+        print(f"Estimating sources for M = {M}/{max_sources}")
+        # Define the prior distribution for source parameters (uniform within workspace)
+        prior_x = uniform(loc=0, scale=40)  # Uniform distribution for x
+        prior_y = uniform(loc=0, scale=40)  # Uniform distribution for y
+        # from 1e3 to 1e5
+        prior_intensity = uniform(loc=1e3, scale=1e5)  # Uniform distribution for intensity
+
+        # Prior distribution for all parameters of all sources
+        prior_dist = [prior_x, prior_y, prior_intensity] * M
+
+        theta_estimate = importance_sampling_with_progressive_correction(
+            obs_wp,
+            obs_vals,
+            lambda_b,
+            M,
+            n_samples,
+            s_stages,
+            prior_dist
+        )
+        
+        # Compute the posterior expectation of the theta estimate
+        log_likelihood = -poisson_log_likelihood(theta_estimate, obs_wp, obs_vals, lambda_b, M)
+
+        # Number of parameters is 3 times the number of sources
+        num_params = 3 * M
+        
+        # Calculate BIC
+        bic = calculate_bic(log_likelihood, num_params, len(obs_vals))
+        print("BIC:", bic)
+        if bic > best_bic:
+            best_bic = bic
+            best_estimate = theta_estimate
+            best_M = M
+            
+    return best_estimate, best_M
+
 if __name__ == "__main__":
     from radiation import RadiationField
     from boustrophedon import Boustrophedon
+    from scipy.stats import uniform  # Assuming uniform priors
+
+    # Define the prior distribution for source parameters (uniform within workspace)
 
     # Example usage
-    scenario = RadiationField(workspace_size=(40, 40), num_sources=2)
-    scenario.update_source(0, 20, 20, 1e4)
+    scenario = RadiationField(workspace_size=(40, 40), num_sources=1)
     boust = Boustrophedon(scenario, budget=375)
 
     Z_pred, std = boust.run()
@@ -419,7 +545,17 @@ if __name__ == "__main__":
     print("Boust observation waypoints:", boust.obs_wp)
     print("Boust observation values:", boust.measurements)
 
-    estimated_locs, estimated_num_sources = estimate_sources(boust.obs_wp, boust.measurements, 1, M_max=2)
+
+    # Call the Bayesian estimation function
+    n_samples = 1000  # Number of samples for importance sampling
+    s_stages = 25  # Number of stages for progressive correction
+    max_sources = 4  # Max number of sources to test
+    lambda_b = 1  # Background radiation level
+    # Estimate sources and number of sources using Bayesian approach
+    estimated_locs, estimated_num_sources = estimate_sources_bayesian(
+        boust.obs_wp, boust.measurements, lambda_b, max_sources,
+        n_samples, s_stages
+    )
     # rearrange estimated_locs such that every 3 are an array
     estimated_locs = estimated_locs.reshape((-1, 3))
     print("Estimated Locations:", estimated_locs)
@@ -430,10 +566,10 @@ if __name__ == "__main__":
         if i >= estimated_num_sources:
             print(f"Source {i+1} Error: Not estimated")
         else:
-            print(f"X Error: {abs(source[0] - estimated_locs[i][0])}")
-            print(f"Y Error: {abs(source[1] - estimated_locs[i][1])}")
+            print(f"X Error: {abs(source[0] - estimated_locs[i][0])}" + f" Error (%): {abs(source[0] - estimated_locs[i][0]) / source[0] * 100}%" )
+            print(f"Y Error: {abs(source[1] - estimated_locs[i][1])}" + f" Error (%): {abs(source[1] - estimated_locs[i][1]) / source[1] * 100}%" )
             print(f"Norm error: {np.linalg.norm([source[0] - estimated_locs[i][0], source[1] - estimated_locs[i][1]])}")
-            print(f"Intensity Error: {abs(source[2] - estimated_locs[i][2])}")
+            print(f"Intensity Error (%): {abs(source[2] - estimated_locs[i][2]) / source[2] * 100}%")
 
     # Number of sources error
     print(f"Number of Sources Error: {abs(len(scenario.sources) - estimated_num_sources)}")

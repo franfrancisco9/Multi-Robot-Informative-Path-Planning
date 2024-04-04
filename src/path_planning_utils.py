@@ -280,8 +280,8 @@ from scipy.optimize import minimize
 from scipy.stats import poisson
 import cma
 
-def poisson_log_likelihood(theta, obs_wp, obs_vals, lambda_b, M, alpha=0.001):
-    converted_obs_vals = np.round(obs_vals).astype(int)
+def poisson_log_likelihood(theta, obs_wp, obs_vals, lambda_b, M):
+    converted_obs_vals = np.round(obs_vals).astype(int) 
 
     log_likelihood = 0.0
     sources = theta.reshape((M, 3)) if len(theta) == 3 * M else np.array([theta])
@@ -404,73 +404,48 @@ def estimate_sources(obs_wp, obs_vals, lambda_b, M_max):
 
     return best_model, best_M
 
-def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, M, n_samples, s_stages, prior_dist, alpha=0.001):
+def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, M, n_samples, s_stages, prior_dist, alpha=0.0001):
     # Step 1: Select γ1, ..., γs (these are parameters that control the tightness of the approximation)
     gammas = np.linspace(0.1, 1, s_stages)
     # print("Gammas:", gammas)
-    obs_vals = np.round(obs_vals).astype(int)
     # Step 2: Draw initial samples from the prior distribution
     theta_samples = np.column_stack([dist.rvs(n_samples) for dist in prior_dist])
+    theta_samples_prev = theta_samples.copy()  # Store the initial sample for the first iteration
+
     # print("Initial theta samples:", theta_samples)
 
-    def calc_weights(theta, gamma, obs_wp, obs_vals, lambda_b, alpha):
+    def calc_weights(theta, gamma, obs_wp, obs_vals, lambda_b, M):
+        n_samples = len(theta)
         log_weights = np.zeros(n_samples)
-        M = theta.shape[1] // 3
-        # print("M:", M)
-        # print("Gamma:", gamma)
-        max_log_weight = -np.inf  # Initialize with the lowest possible value
-        converted_obs_vals = np.round(obs_vals).astype(int)
         for i in range(n_samples):
-            # print("Sample:", i)
-            sample_log_weight = 0.0
-            for obs_index, (x_obs, y_obs) in enumerate(obs_wp):
-                lambda_j = lambda_b
-                for source_index in range(M):
-                    x_source, y_source, source_intensity = theta[i, source_index*3:(source_index+1)*3]
-                    d_ji = max(np.sqrt((x_obs - x_source)**2 + (y_obs - y_source)**2), 1e-6)
-                    lambda_j += source_intensity / d_ji**2
-                
-                log_pmf = poisson.logpmf(converted_obs_vals[obs_index], lambda_j)
-                # print("Log PMF:", log_pmf)
-                sample_log_weight += log_pmf 
-                # print("Sample log weight:", sample_log_weight)
-                
+            sample_log_likelihood = -poisson_log_likelihood(theta[i], obs_wp, obs_vals, lambda_b, M)
+            log_weights[i] = gamma * sample_log_likelihood
             
-            sample_log_weight = gamma * sample_log_weight
-            # print("Sample log weight:", sample_log_weight)
-            log_weights[i] = sample_log_weight
-            # print("Sample log weight:", sample_log_weight)
-            max_log_weight = max(max_log_weight, sample_log_weight)
-
-        # Apply log-sum-exp trick to prevent underflow when exponentiating
-        weights = np.exp(log_weights - max_log_weight)
-        # print("Weights:", weights)
-        # Normalize weights
-        weight_sum = np.sum(weights)
-        if weight_sum > 0:
-            weights /= weight_sum
-        else:
-            weights = np.ones(n_samples) / n_samples
-        # print("Normalized weights:", weights)
+        weights = np.exp(log_weights - np.max(log_weights))  # Normalize the weights
+        weights /= np.sum(weights)  # Ensure the weights sum to 1
         return weights
+
 
     # Step 3: Iterate through the stages
     with tqdm(total=s_stages) as pbar:
         for k, gamma in enumerate(gammas):
             pbar.set_description(f"Stage {k+1}/{s_stages}")
             pbar.update(1)
-            # a) Compute the weights
-            weights = calc_weights(theta_samples, gamma, obs_wp, obs_vals, lambda_b, alpha)
-            # replace NaNs with 0
-            weights = np.nan_to_num(weights)
-            # b) Resample according to the weights
-            indices = np.random.choice(np.arange(n_samples), size=n_samples, replace=True, p=weights)
-            theta_samples = theta_samples[indices]
-            
-            # c) Perturb the resampled particles
+            # Calculate weights using the samples from the previous iteration
+            weights = calc_weights(theta_samples_prev, gamma, obs_wp, obs_vals, lambda_b, M)
+
+            # Resampling step
+            indices = np.random.choice(n_samples, size=n_samples, p=weights, replace=True)
+            theta_samples = theta_samples_prev[indices, :]
+
+            # Perturbation step
             perturbations = np.random.normal(0, alpha, size=theta_samples.shape)
             theta_samples += perturbations
-            print("Theta Estimate mean:", np.mean(theta_samples, axis=0))
+            # add pbar description with current theta_estimate
+            pbar.set_postfix(theta_estimate=np.mean(theta_samples, axis=0))
+            # Update the previous sample set for the next iteration
+            theta_samples_prev = theta_samples.copy()
+
 
         # Step 4: Compute the parameter estimate as the mean of the samples
         theta_estimate = np.mean(theta_samples, axis=0)
@@ -493,7 +468,7 @@ def estimate_sources_bayesian(obs_wp, obs_vals, lambda_b, max_sources, n_samples
         prior_x = uniform(loc=0, scale=40)  # Uniform distribution for x
         prior_y = uniform(loc=0, scale=40)  # Uniform distribution for y
         # from 1e3 to 1e5
-        prior_intensity = uniform(loc=1e3, scale=1e5)  # Uniform distribution for intensity
+        prior_intensity = uniform(loc=1e3, scale=1e6)
 
         # Prior distribution for all parameters of all sources
         prior_dist = [prior_x, prior_y, prior_intensity] * M
@@ -540,14 +515,14 @@ if __name__ == "__main__":
 
     RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
 
-    helper_plot(scenario, 1, Z_true, Z_pred, std, boust, RMSE, 1, 1, save=False, show=False)
+    # helper_plot(scenario, 1, Z_true, Z_pred, std, boust, RMSE, 1, 1, save=False, show=False)
     # Example usage (placeholders for obs_wp and obs_vals)
     print("Boust observation waypoints:", boust.obs_wp)
     print("Boust observation values:", boust.measurements)
-
+    print("Boust sources:", scenario.sources)
 
     # Call the Bayesian estimation function
-    n_samples = 1000  # Number of samples for importance sampling
+    n_samples = 500 # Number of samples for importance sampling
     s_stages = 25  # Number of stages for progressive correction
     max_sources = 4  # Max number of sources to test
     lambda_b = 1  # Background radiation level
@@ -573,3 +548,48 @@ if __name__ == "__main__":
 
     # Number of sources error
     print(f"Number of Sources Error: {abs(len(scenario.sources) - estimated_num_sources)}")
+
+    # Plot in the space the sources and the estimated sources 
+    fig, ax = plt.subplots(figsize=(10, 10))
+    ax.set_title("Estimated Sources")
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    for source in scenario.sources:
+        ax.plot(source[0], source[1], 'ro', markersize=10, label='Source')
+    for est_source in estimated_locs:
+        ax.plot(est_source[0], est_source[1], 'bx', markersize=10, label='Estimated Source')
+    # make sure the x and y axis are the same from 0 to 40 
+    ax.set_xlim([0, 40])
+    ax.set_ylim([0, 40])
+    plt.legend()
+    plt.show()
+    plt.close()
+    # # Test different correction and number of samples values
+    # correction_values = [5, 10, 15]
+    # num_samples_values = [500, 1000, 1500]
+    # colors = ['red', 'green', 'blue']
+
+    # for i, (correction, num_samples) in enumerate(zip(correction_values, num_samples_values)):
+    #     estimated_locs, estimated_num_sources = estimate_sources_bayesian(
+    #         boust.obs_wp, boust.measurements, lambda_b, max_sources,
+    #         num_samples, correction
+    #     )
+    #     # rearrange estimated_locs such that every 3 are an array
+    #     estimated_locs = estimated_locs.reshape((-1, 3))
+    #     print(f"Estimated Locations for correction={correction} and num_samples={num_samples}:", estimated_locs)
+    #     print(f"Estimated Number of Sources for correction={correction} and num_samples={num_samples}:", estimated_num_sources)
+
+    #     # Plot in the space the sources and the estimated sources 
+    #     fig, ax = plt.subplots(figsize=(10, 10))
+    #     ax.set_title(f"Estimated Sources for correction={correction} and num_samples={num_samples}")
+    #     ax.set_xlabel("X")
+    #     ax.set_ylabel("Y")
+    #     ax.set_xlim([0, 40])
+    #     ax.set_ylim([0, 40])
+    #     for source in scenario.sources:
+    #         ax.scatter(*source[:2], color='black', label='Actual Source')
+    #     for est_source in estimated_locs:
+    #         ax.scatter(*est_source[:2], color=colors[i], label=f'Estimated Source (correction={correction}, num_samples={num_samples})')
+        
+    #     plt.legend()
+    #     plt.show()

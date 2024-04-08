@@ -1,9 +1,12 @@
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt, imageio
 from matplotlib import ticker, colors
 import numpy as np
 import os 
 from tqdm import tqdm
-
+from scipy.optimize import minimize
+from scipy.stats import poisson, uniform, norm
+from scipy.spatial import cKDTree
+import cma
 class TreeNode:
     """Represents a node in a tree structure."""
     def __init__(self, point, parent=None, cost=0):
@@ -254,32 +257,27 @@ def save_run_info(run_number, rmse_list, entropy_list, args, folder_path="../run
     
     print(f"Run information saved to {filename}")
 
-import numpy as np
-from scipy.optimize import minimize
-from scipy.stats import norm
-from radiation import RadiationField
+"""
+Estimate Sources 
+Citation:
+M. Morelande, B. Ristic and A. Gunatilaka, "Detection and parameter estimation of multiple radioactive sources," 
+2007 10th International Conference on Information Fusion, Quebec, QC, Canada, 2007, pp. 1-7, doi: 10.1109/ICIF.2007.4408094. 
 
-intensity = RadiationField(workspace_size=(40, 40), num_sources=1).intensity
+MLE estimation of sources
+l(z| theta ) = prod (i=1 to m) P(z_j;lambda_j(theta))
+z are the m measurements (obs_vals)
+P(z;func) = exp(-func)func^z/z! (Poission distribution) evaluated at
+each z with func = lambda_j(theta) = lambda_b + sum (i=1 to r) alpha_i/d_ji
+where r is the number of sources, d_ji is the distance between the jth observation and the ith source
+lambda_b is the average count due to background radiation and we assume it is known
 
-# The estimate sources function
+the goals is to use MLE to maximize the likelihood function such that we find the vector of~
+theta sources such that theta_hat_ML = arg max _theta l(z|theta)
+and to estimate the number of sources we consider M = {0, ..., M_max} and the best number of sources is
+the best beta_r = log p(z|theta_hat_ml,r) - 1/2 log |J(theta_hat_ml,r)| and J(theta) is the Fisher information matrix
 
-# l(z| theta ) = prod (i=1 to m) P(z_j;lambda_j(theta))
-# z are the m measurements (obs_vals)
-# P(z;func) = exp(-func)func^z/z! (Poission distribution) evaluated at
-# each z with func = lambda_j(theta) = lambda_b + sum (i=1 to r) alpha_i/d_ji
-# where r is the number of sources, d_ji is the distance between the jth observation and the ith source
-# lambda_b is the average count due to background radiation and we assume it is known
-
-# the goals is to use MLE to maximize the likelihood function such that we find the vector of~
-# theta sources such that theta_hat_ML = arg max _theta l(z|theta)
-# and to estimate the number of sources we consider M = {0, ..., M_max} and the best number of sources is
-# the best beta_r = log p(z|theta_hat_ml,r) - 1/2 log |J(theta_hat_ml,r)| and J(theta) is the Fisher information matrix
-
-import numpy as np
-from scipy.optimize import minimize
-from scipy.stats import poisson
-import cma
-
+Bayesian estimation of sources
+"""
 def poisson_log_likelihood(theta, obs_wp, obs_vals, lambda_b, M):
     converted_obs_vals = np.round(obs_vals).astype(int) 
 
@@ -299,9 +297,6 @@ def poisson_log_likelihood(theta, obs_wp, obs_vals, lambda_b, M):
         log_likelihood += log_pmf
 
     return -log_likelihood  # Minimization in optimization routines
-
-import numpy as np
-from scipy.stats import poisson
 
 def estimate_parameters(obs_wp, obs_vals, lambda_b, M):
     # Initial guess and bounds adjusted for using the log of intensity values
@@ -404,14 +399,18 @@ def estimate_sources(obs_wp, obs_vals, lambda_b, M_max):
 
     return best_model, best_M
 
-def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, M, n_samples, s_stages, prior_dist, alpha=0.0001):
+def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, M, n_samples, s_stages, prior_dist, prev_theta_samples=None, alpha=0.00001):
     # Step 1: Select γ1, ..., γs (these are parameters that control the tightness of the approximation)
     gammas = np.linspace(0.1, 1, s_stages)
     # print("Gammas:", gammas)
-    # Step 2: Draw initial samples from the prior distribution
-    theta_samples = np.column_stack([dist.rvs(n_samples) for dist in prior_dist])
+    if prev_theta_samples is not None:
+        # choose the number of samples from the previous samples
+        theta_samples = prev_theta_samples.copy()[:n_samples]
+    else:
+        # Step 2: Draw initial samples from the prior distribution
+        theta_samples = np.column_stack([dist.rvs(n_samples) for dist in prior_dist])
+    # print("Initial theta samples:", theta_samples)
     theta_samples_prev = theta_samples.copy()  # Store the initial sample for the first iteration
-
     # print("Initial theta samples:", theta_samples)
 
     def calc_weights(theta, gamma, obs_wp, obs_vals, lambda_b, M):
@@ -425,39 +424,47 @@ def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, 
         weights /= np.sum(weights)  # Ensure the weights sum to 1
         return weights
 
+    for k in tqdm(range(s_stages)):
+        gamma = gammas[k]
+        weights = calc_weights(theta_samples_prev, gamma, obs_wp, obs_vals, lambda_b, M)
+        indices = np.random.choice(n_samples, size=n_samples, p=weights, replace=True)
+        resampled_samples = theta_samples[indices, :]
 
-    # Step 3: Iterate through the stages
-    with tqdm(total=s_stages) as pbar:
-        for k, gamma in enumerate(gammas):
-            pbar.set_description(f"Stage {k+1}/{s_stages}")
-            pbar.update(1)
-            # Calculate weights using the samples from the previous iteration
-            weights = calc_weights(theta_samples_prev, gamma, obs_wp, obs_vals, lambda_b, M)
+        # Compute KDE parameters once for each source parameter across all samples
+        x_means = resampled_samples[:, ::3].mean(axis=0)
+        y_means = resampled_samples[:, 1::3].mean(axis=0)
+        intensity_means = resampled_samples[:, 2::3].mean(axis=0)
 
-            # Resampling step
-            indices = np.random.choice(n_samples, size=n_samples, p=weights, replace=True)
-            theta_samples = theta_samples_prev[indices, :]
+        x_stds = resampled_samples[:, ::3].std(axis=0, ddof=1)
+        y_stds = resampled_samples[:, 1::3].std(axis=0, ddof=1)
+        intensity_stds = resampled_samples[:, 2::3].std(axis=0, ddof=1)
 
-            # Perturbation step
-            perturbations = np.random.normal(0, alpha, size=theta_samples.shape)
-            theta_samples += perturbations
-            # add pbar description with current theta_estimate
-            pbar.set_postfix(theta_estimate=np.mean(theta_samples, axis=0))
-            # Update the previous sample set for the next iteration
-            theta_samples_prev = theta_samples.copy()
+        # Sample perturbations in a vectorized way
+        x_perturbations = norm.rvs(loc=x_means, scale=x_stds*alpha, size=(n_samples, M))
+        y_perturbations = norm.rvs(loc=y_means, scale=y_stds*alpha, size=(n_samples, M))
+        intensity_perturbations = norm.rvs(loc=intensity_means, scale=intensity_stds*alpha, size=(n_samples, M))
+
+        # Directly assign perturbations without reshaping
+        resampled_samples[:, ::3] = x_perturbations
+        resampled_samples[:, 1::3] = y_perturbations
+        resampled_samples[:, 2::3] = intensity_perturbations
+
+        # Update the theta samples for the next iteration
+        theta_samples = resampled_samples
+        theta_samples_prev = theta_samples.copy()
 
 
-        # Step 4: Compute the parameter estimate as the mean of the samples
-        theta_estimate = np.mean(theta_samples, axis=0)
-
-        return theta_estimate
+    # Compute the final parameter estimate
+    theta_estimate = np.mean(theta_samples, axis=0)
+    return theta_estimate, theta_samples
+    
 
 def calculate_bic(log_likelihood, num_params, num_data_points):
     """Calculate the Bayesian Information Criterion."""
-    bic = 2 * log_likelihood + num_params * np.log(num_data_points)
+    bic =  2 * log_likelihood + num_params * np.log(num_data_points)
     return bic
 
-def estimate_sources_bayesian(obs_wp, obs_vals, lambda_b, max_sources, n_samples, s_stages):
+def estimate_sources_bayesian(obs_wp, obs_vals, lambda_b, max_sources, n_samples, s_stages, prev_theta_samples=[]):
     best_bic = -np.inf
     best_estimate = None
     best_M = 0
@@ -468,21 +475,37 @@ def estimate_sources_bayesian(obs_wp, obs_vals, lambda_b, max_sources, n_samples
         prior_x = uniform(loc=0, scale=40)  # Uniform distribution for x
         prior_y = uniform(loc=0, scale=40)  # Uniform distribution for y
         # from 1e3 to 1e5
-        prior_intensity = uniform(loc=1e3, scale=1e6)
+        prior_intensity = uniform(loc=1e4, scale=1e5)
 
         # Prior distribution for all parameters of all sources
         prior_dist = [prior_x, prior_y, prior_intensity] * M
 
-        theta_estimate = importance_sampling_with_progressive_correction(
-            obs_wp,
-            obs_vals,
-            lambda_b,
-            M,
-            n_samples,
-            s_stages,
-            prior_dist
-        )
-        
+        if len(prev_theta_samples) == max_sources:
+            # print("Using previous samples")
+            # print("Previous samples:", prev_theta_samples)
+            theta_estimate, theta_samples = importance_sampling_with_progressive_correction(
+                obs_wp,
+                obs_vals,
+                lambda_b,
+                M,
+                n_samples,
+                s_stages,
+                prior_dist,
+                prev_theta_samples=prev_theta_samples[M - 1]
+            )
+        else:
+            theta_estimate, theta_samples = importance_sampling_with_progressive_correction(
+                obs_wp,
+                obs_vals,
+                lambda_b,
+                M,
+                n_samples,
+                s_stages,
+                prior_dist
+            )
+            # create list of lists inside the prev_theta_samples by extending the previous samples
+            prev_theta_samples.append(theta_samples)
+
         # Compute the posterior expectation of the theta estimate
         log_likelihood = -poisson_log_likelihood(theta_estimate, obs_wp, obs_vals, lambda_b, M)
 
@@ -496,100 +519,121 @@ def estimate_sources_bayesian(obs_wp, obs_vals, lambda_b, max_sources, n_samples
             best_bic = bic
             best_estimate = theta_estimate
             best_M = M
-            
-    return best_estimate, best_M
+    print("prev_theta_samples:", len(prev_theta_samples))
+    return best_estimate, best_M, prev_theta_samples
 
-if __name__ == "__main__":
-    from radiation import RadiationField
-    from boustrophedon import Boustrophedon
-    from scipy.stats import uniform  # Assuming uniform priors
+def create_gif(save_dir, output_filename="test.gif"):
+    images = []
+    # do the gif with all the images in save_dir that end with test_2.png
+    # collect those names and order by iteration, the names are iteration_{i}_test_2.png make sure to order by the int of i
+    image_names = [f for f in os.listdir(save_dir) if f.endswith("test_2.png")]
+    image_names.sort(key=lambda x: int(x.split("_")[1]))
+    for image_name in image_names:
+        images.append(imageio.imread(os.path.join(save_dir, image_name)))
+    imageio.mimsave(os.path.join(save_dir, output_filename), images, fps=1)
 
-    # Define the prior distribution for source parameters (uniform within workspace)
+def save_plot_iteration(i, scenario, estimated_locs, obs_wp_send):
+        print(f"Plotting iteration {i}")
+        fig, ax = plt.subplots(figsize=(10, 10))
+        ax.set_title("Estimated Sources Iteration: {}".format(i))
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        
+        # Plot actual sources
+        for source in scenario.sources:
+            ax.plot(source[0], source[1], 'ro', markersize=10, label='Actual Source')
+        
+        # Plot estimated sources
+        for est_source in estimated_locs:
+            ax.plot(est_source[0], est_source[1], 'bx', markersize=10, label='Estimated Source')
+        
+        # Plot observation waypoints
+        for obs in obs_wp_send:
+            ax.plot(*obs, 'go', markersize=5)
+        
+        ax.set_xlim([0, 40])
+        ax.set_ylim([0, 40])
+        # legend outside the plot to the right
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        
+        # Save the plot
+        plt.savefig(os.path.join(save_dir, f"iteration_{i}_test_2.png"))
+        #plt.show()
+        plt.close(fig)
 
-    # Example usage
-    scenario = RadiationField(workspace_size=(40, 40), num_sources=1)
-    boust = Boustrophedon(scenario, budget=375)
-
-    Z_pred, std = boust.run()
-    Z_true = scenario.ground_truth()
-
-    RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
-
-    # helper_plot(scenario, 1, Z_true, Z_pred, std, boust, RMSE, 1, 1, save=False, show=False)
-    # Example usage (placeholders for obs_wp and obs_vals)
-    print("Boust observation waypoints:", boust.obs_wp)
-    print("Boust observation values:", boust.measurements)
-    print("Boust sources:", scenario.sources)
-
-    # Call the Bayesian estimation function
-    n_samples = 500 # Number of samples for importance sampling
-    s_stages = 25  # Number of stages for progressive correction
-    max_sources = 4  # Max number of sources to test
-    lambda_b = 1  # Background radiation level
-    # Estimate sources and number of sources using Bayesian approach
-    estimated_locs, estimated_num_sources = estimate_sources_bayesian(
-        boust.obs_wp, boust.measurements, lambda_b, max_sources,
-        n_samples, s_stages
-    )
-    # rearrange estimated_locs such that every 3 are an array
-    estimated_locs = estimated_locs.reshape((-1, 3))
+def log_estimation_details(iteration, estimated_locs, estimated_num_sources, actual_sources):
+    print(f"Iteration {iteration}:")
     print("Estimated Locations:", estimated_locs)
     print("Estimated Number of Sources:", estimated_num_sources)
-    print("Actual Sources:", scenario.sources)
-    # Errors 
-    for i, source in enumerate(scenario.sources):
-        if i >= estimated_num_sources:
-            print(f"Source {i+1} Error: Not estimated")
+    print("Actual Sources:", actual_sources)
+    
+    # Calculate and print errors
+    for i, source in enumerate(actual_sources):
+        if i < estimated_num_sources:
+            x_error = abs(source[0] - estimated_locs[i][0])
+            y_error = abs(source[1] - estimated_locs[i][1])
+            intensity_error = abs(source[2] - estimated_locs[i][2])
+            norm_error = np.linalg.norm([x_error, y_error])
+            
+            print(f"Source {i+1} Errors:")
+            print(f"    X Error: {x_error} (Error %: {x_error / source[0] * 100}%)")
+            print(f"    Y Error: {y_error} (Error %: {y_error / source[1] * 100}%)")
+            print(f"    Norm error: {norm_error}")
+            print(f"    Intensity Error: {intensity_error} (Error %: {intensity_error / source[2] * 100}%)")
         else:
-            print(f"X Error: {abs(source[0] - estimated_locs[i][0])}" + f" Error (%): {abs(source[0] - estimated_locs[i][0]) / source[0] * 100}%" )
-            print(f"Y Error: {abs(source[1] - estimated_locs[i][1])}" + f" Error (%): {abs(source[1] - estimated_locs[i][1]) / source[1] * 100}%" )
-            print(f"Norm error: {np.linalg.norm([source[0] - estimated_locs[i][0], source[1] - estimated_locs[i][1]])}")
-            print(f"Intensity Error (%): {abs(source[2] - estimated_locs[i][2]) / source[2] * 100}%")
-
+            print(f"Source {i+1} Error: Not estimated")
+    
     # Number of sources error
-    print(f"Number of Sources Error: {abs(len(scenario.sources) - estimated_num_sources)}")
+    num_sources_error = abs(len(actual_sources) - estimated_num_sources)
+    print(f"Number of Sources Error: {num_sources_error}")
+  
+if __name__ == "__main__":
+    # Example on how to estimate sources using the both methods
+    from radiation import RadiationField
+    from boustrophedon import Boustrophedon
+    # Directory setup for saving plots
+    save_dir = "../runs_review/sources_test"
+    os.makedirs(save_dir, exist_ok=True)
 
-    # Plot in the space the sources and the estimated sources 
-    fig, ax = plt.subplots(figsize=(10, 10))
-    ax.set_title("Estimated Sources")
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    for source in scenario.sources:
-        ax.plot(source[0], source[1], 'ro', markersize=10, label='Source')
-    for est_source in estimated_locs:
-        ax.plot(est_source[0], est_source[1], 'bx', markersize=10, label='Estimated Source')
-    # make sure the x and y axis are the same from 0 to 40 
-    ax.set_xlim([0, 40])
-    ax.set_ylim([0, 40])
-    plt.legend()
-    plt.show()
-    plt.close()
-    # # Test different correction and number of samples values
-    # correction_values = [5, 10, 15]
-    # num_samples_values = [500, 1000, 1500]
-    # colors = ['red', 'green', 'blue']
+    # Simulation and Bayesian estimation parameters
+    workspace_size = (40, 40)
+    num_sources = 1
+    budget = 375
+    n_samples = 100  # Number of samples for importance sampling
+    s_stages = 50   # Number of stages for progressive correction
+    max_sources = 3 # Max number of sources to test
+    lambda_b = 1    # Background radiation level
+    iteration_step = 10  # Iteration step for progressive estimation
 
-    # for i, (correction, num_samples) in enumerate(zip(correction_values, num_samples_values)):
-    #     estimated_locs, estimated_num_sources = estimate_sources_bayesian(
-    #         boust.obs_wp, boust.measurements, lambda_b, max_sources,
-    #         num_samples, correction
-    #     )
-    #     # rearrange estimated_locs such that every 3 are an array
-    #     estimated_locs = estimated_locs.reshape((-1, 3))
-    #     print(f"Estimated Locations for correction={correction} and num_samples={num_samples}:", estimated_locs)
-    #     print(f"Estimated Number of Sources for correction={correction} and num_samples={num_samples}:", estimated_num_sources)
-
-    #     # Plot in the space the sources and the estimated sources 
-    #     fig, ax = plt.subplots(figsize=(10, 10))
-    #     ax.set_title(f"Estimated Sources for correction={correction} and num_samples={num_samples}")
-    #     ax.set_xlabel("X")
-    #     ax.set_ylabel("Y")
-    #     ax.set_xlim([0, 40])
-    #     ax.set_ylim([0, 40])
-    #     for source in scenario.sources:
-    #         ax.scatter(*source[:2], color='black', label='Actual Source')
-    #     for est_source in estimated_locs:
-    #         ax.scatter(*est_source[:2], color=colors[i], label=f'Estimated Source (correction={correction}, num_samples={num_samples})')
+    # Setup scenario and boustrophedon
+    scenario = RadiationField(workspace_size=workspace_size, num_sources=num_sources)
+    boust = Boustrophedon(scenario, budget=budget)
+    
+    Z_pred, std = boust.run()
+    Z_true = scenario.ground_truth()
+    RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
+    
+    current_obs_wp = boust.obs_wp.copy()
+    current_obs_vals = boust.measurements.copy()
+    theta_samples = []
+    iteration_counter = 1
+    
+    # Simulation loop
+    for iter_val in range(iteration_step, len(boust.obs_wp) + iteration_step, iteration_step):
+        iter_val = min(iter_val, len(boust.obs_wp))  # Ensure we do not go beyond the total number of waypoints
+        obs_vals_send, obs_wp_send = current_obs_vals[:iter_val], current_obs_wp[:iter_val]
         
-    #     plt.legend()
-    #     plt.show()
+        estimated_locs, estimated_num_sources, theta_samples = estimate_sources_bayesian(
+            obs_wp_send, obs_vals_send, lambda_b, max_sources, n_samples, s_stages,
+            prev_theta_samples=[]
+        )
+        
+        estimated_locs = estimated_locs.reshape((-1, 3))
+
+        # Log details of the current estimation
+        log_estimation_details(iteration_counter, estimated_locs, estimated_num_sources, scenario.sources)
+        
+        save_plot_iteration(iteration_counter, scenario, estimated_locs, obs_wp_send)
+        iteration_counter += 1
+
+    create_gif(save_dir, "sources_estimation_test_2.gif")

@@ -461,7 +461,7 @@ def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, 
 
 def calculate_bic(log_likelihood, num_params, num_data_points):
     """Calculate the Bayesian Information Criterion."""
-    bic =  2 * log_likelihood + num_params * np.log(num_data_points)
+    bic = 2 * log_likelihood + num_params * np.log(num_data_points)
     return bic
 
 def estimate_sources_bayesian(obs_wp, obs_vals, lambda_b, max_sources, n_samples, s_stages, prev_theta_samples=[]):

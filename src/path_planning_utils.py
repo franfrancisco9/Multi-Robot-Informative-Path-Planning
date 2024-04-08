@@ -4,7 +4,7 @@ import numpy as np
 import os 
 from tqdm import tqdm
 from scipy.optimize import minimize
-from scipy.stats import poisson, uniform, norm
+from scipy.stats import poisson, uniform, norm, gaussian_kde
 from scipy.spatial import cKDTree
 import cma
 class TreeNode:
@@ -404,8 +404,11 @@ def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, 
     gammas = np.linspace(0.1, 1, s_stages)
     # print("Gammas:", gammas)
     if prev_theta_samples is not None:
-        # choose the number of samples from the previous samples
-        theta_samples = prev_theta_samples.copy()[:n_samples]
+        # in this case we want to popultate half of the samples with the previous samples
+        theta_samples = np.zeros((n_samples, 3*M))
+        theta_samples[:n_samples//2, :] = prev_theta_samples[np.random.choice(len(prev_theta_samples), n_samples//2, replace=True)]
+        # the rest with the prior distribution
+        theta_samples[n_samples//2:, :] = np.column_stack([dist.rvs(n_samples//2) for dist in prior_dist])
     else:
         # Step 2: Draw initial samples from the prior distribution
         theta_samples = np.column_stack([dist.rvs(n_samples) for dist in prior_dist])
@@ -424,7 +427,7 @@ def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, 
         weights /= np.sum(weights)  # Ensure the weights sum to 1
         return weights
 
-    for k in tqdm(range(s_stages)):
+    for k in range(s_stages):
         gamma = gammas[k]
         weights = calc_weights(theta_samples_prev, gamma, obs_wp, obs_vals, lambda_b, M)
         indices = np.random.choice(n_samples, size=n_samples, p=weights, replace=True)
@@ -470,7 +473,7 @@ def estimate_sources_bayesian(obs_wp, obs_vals, lambda_b, max_sources, n_samples
     best_M = 0
     
     for M in range(1, max_sources + 1):
-        print(f"Estimating sources for M = {M}/{max_sources}")
+        #print(f"Estimating sources for M = {M}/{max_sources}")
         # Define the prior distribution for source parameters (uniform within workspace)
         prior_x = uniform(loc=0, scale=40)  # Uniform distribution for x
         prior_y = uniform(loc=0, scale=40)  # Uniform distribution for y
@@ -514,19 +517,18 @@ def estimate_sources_bayesian(obs_wp, obs_vals, lambda_b, max_sources, n_samples
         
         # Calculate BIC
         bic = calculate_bic(log_likelihood, num_params, len(obs_vals))
-        print("BIC:", bic)
+        #print("BIC:", bic)
         if bic > best_bic:
             best_bic = bic
             best_estimate = theta_estimate
             best_M = M
-    print("prev_theta_samples:", len(prev_theta_samples))
-    return best_estimate, best_M, prev_theta_samples
+    #print("prev_theta_samples:", len(prev_theta_samples))
+    return best_estimate, best_M, prev_theta_samples, best_bic
 
-def create_gif(save_dir, output_filename="test.gif"):
+def create_gif(save_dir, output_filename="sources_estimation_test_0.gif"):
     images = []
-    # do the gif with all the images in save_dir that end with test_2.png
-    # collect those names and order by iteration, the names are iteration_{i}_test_2.png make sure to order by the int of i
-    image_names = [f for f in os.listdir(save_dir) if f.endswith("test_2.png")]
+    test_str = "test_" + output_filename.split("_")[-1].split(".")[0] 
+    image_names = [f for f in os.listdir(save_dir) if f.endswith(f"{test_str}.png")]
     image_names.sort(key=lambda x: int(x.split("_")[1]))
     for image_name in image_names:
         images.append(imageio.imread(os.path.join(save_dir, image_name)))
@@ -557,9 +559,10 @@ def save_plot_iteration(i, scenario, estimated_locs, obs_wp_send):
         ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
         
         # Save the plot
-        plt.savefig(os.path.join(save_dir, f"iteration_{i}_test_2.png"))
+        plt.savefig(os.path.join(save_dir, f"iteration_{i}_test_" + str(len(scenario.sources)) + ".png"))
         #plt.show()
         plt.close(fig)
+
 
 def log_estimation_details(iteration, estimated_locs, estimated_num_sources, actual_sources):
     print(f"Iteration {iteration}:")
@@ -592,48 +595,49 @@ if __name__ == "__main__":
     from radiation import RadiationField
     from boustrophedon import Boustrophedon
     # Directory setup for saving plots
-    save_dir = "../runs_review/sources_test"
+    save_dir = "../runs_review/sources_test_empty_0.00001_alpha_100"
     os.makedirs(save_dir, exist_ok=True)
 
     # Simulation and Bayesian estimation parameters
     workspace_size = (40, 40)
-    num_sources = 1
     budget = 375
     n_samples = 100  # Number of samples for importance sampling
-    s_stages = 50   # Number of stages for progressive correction
+    s_stages = 25   # Number of stages for progressive correction
     max_sources = 3 # Max number of sources to test
     lambda_b = 1    # Background radiation level
     iteration_step = 10  # Iteration step for progressive estimation
 
-    # Setup scenario and boustrophedon
-    scenario = RadiationField(workspace_size=workspace_size, num_sources=num_sources)
-    boust = Boustrophedon(scenario, budget=budget)
-    
-    Z_pred, std = boust.run()
-    Z_true = scenario.ground_truth()
-    RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
-    
-    current_obs_wp = boust.obs_wp.copy()
-    current_obs_vals = boust.measurements.copy()
-    theta_samples = []
-    iteration_counter = 1
-    
-    # Simulation loop
-    for iter_val in range(iteration_step, len(boust.obs_wp) + iteration_step, iteration_step):
-        iter_val = min(iter_val, len(boust.obs_wp))  # Ensure we do not go beyond the total number of waypoints
-        obs_vals_send, obs_wp_send = current_obs_vals[:iter_val], current_obs_wp[:iter_val]
-        
-        estimated_locs, estimated_num_sources, theta_samples = estimate_sources_bayesian(
-            obs_wp_send, obs_vals_send, lambda_b, max_sources, n_samples, s_stages,
-            prev_theta_samples=[]
-        )
-        
-        estimated_locs = estimated_locs.reshape((-1, 3))
 
-        # Log details of the current estimation
-        log_estimation_details(iteration_counter, estimated_locs, estimated_num_sources, scenario.sources)
+    for num_sources in range(1, 4, 1):
+        # Setup scenario and boustrophedon
+        scenario = RadiationField(workspace_size=workspace_size, num_sources=num_sources)
+        boust = Boustrophedon(scenario, budget=budget)
         
-        save_plot_iteration(iteration_counter, scenario, estimated_locs, obs_wp_send)
-        iteration_counter += 1
+        Z_pred, std = boust.run()
+        Z_true = scenario.ground_truth()
+        RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
+        
+        current_obs_wp = boust.obs_wp.copy()
+        current_obs_vals = boust.measurements.copy()
+        theta_samples = []
+        iteration_counter = 1
+        
+        # Simulation loop
+        for iter_val in range(iteration_step, len(boust.obs_wp) + iteration_step, iteration_step):
+            iter_val = min(iter_val, len(boust.obs_wp))  # Ensure we do not go beyond the total number of waypoints
+            obs_vals_send, obs_wp_send = current_obs_vals[:iter_val], current_obs_wp[:iter_val]
+            
+            estimated_locs, estimated_num_sources, theta_samples, _ = estimate_sources_bayesian(
+                obs_wp_send, obs_vals_send, lambda_b, max_sources, n_samples, s_stages,
+                prev_theta_samples=[]
+            )
+            
+            estimated_locs = estimated_locs.reshape((-1, 3))
 
-    create_gif(save_dir, "sources_estimation_test_2.gif")
+            # Log details of the current estimation
+            log_estimation_details(iteration_counter, estimated_locs, estimated_num_sources, scenario.sources)
+            
+            save_plot_iteration(iteration_counter, scenario, estimated_locs, obs_wp_send)
+            iteration_counter += 1
+
+        create_gif(save_dir, "sources_estimation_test_" + str(num_sources) + ".gif")

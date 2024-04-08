@@ -2,7 +2,7 @@ import numpy as np
 from scipy.spatial import KDTree
 from informative import BaseInformative
 from tqdm import tqdm
-from path_planning_utils import TreeNode, TreeCollection
+from path_planning_utils import TreeNode, TreeCollection, estimate_sources_bayesian
 
 
 class BaseRRTPathPlanning(BaseInformative):
@@ -399,3 +399,48 @@ class InformativeRRTStarPathPlanning(BaseRRTStarPathPlanning):
     def select_path(self):
         path_selection = StrategicRRTPathPlanning.select_path
         return path_selection(self)
+    
+
+class InformativeSourceMetricRRTPathPlanning(StrategicRRTPathPlanning):
+    def __init__(self, *args, lambda_b=1, max_sources=1, n_samples=20, s_stages=5, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name = "InformativeSourceMetricRRTPath"
+        self.lambda_b = lambda_b
+        self.max_sources = max_sources
+        self.n_samples = n_samples
+        self.s_stages = s_stages
+        # Assume prev_theta_samples might be used for continuity in Bayesian estimation
+        self.prev_theta_samples = []
+
+    def node_selection_key(self, node, target_point):
+        """
+        Override the node selection strategy to use Bayesian source estimation
+        to guide the search toward the most informative direction.
+        """
+        # This will store the BIC values for each node
+        bic_values = []
+        if self.observations == []:
+            return 0
+        # Calculate BIC for the current observation set with each candidate node
+        for point in [node.point]:
+            point = np.array([node.point])  # Ensure point is a 2D array for safe stacking
+            temp_obs_wp = np.vstack([np.array(self.obs_wp), point])
+            temp_obs_vals = np.append(self.observations, self.scenario.simulate_measurements([point])[0])
+
+            # Run Bayesian estimation with the candidate point
+            _, _, _, bic = estimate_sources_bayesian(
+                temp_obs_wp,
+                temp_obs_vals,
+                self.lambda_b,
+                self.max_sources,
+                self.n_samples,
+                self.s_stages,
+                prev_theta_samples=self.prev_theta_samples
+            )
+
+            # Store the BIC value
+            bic_values.append(bic)
+
+        # You might use BIC values to prefer nodes leading towards lower BIC (higher information gain)
+        # Here, for simplicity, we return the BIC value itself as the 'cost' to minimize.
+        return -bic_values[0]  # Since there's only one point, return its BIC value

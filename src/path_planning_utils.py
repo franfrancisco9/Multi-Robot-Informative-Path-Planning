@@ -268,14 +268,7 @@ def save_run_info(run_number, rmse_list, entropy_list, source_list, args, folder
                 f.write(f"{strategy} Sources:\n")
                 for i, source in enumerate(zip(sources['x'], sources['y'], sources['intensity'])):
                     f.write(f"Source {i + 1}: ({source[0]:.2f}, {source[1]:.2f}), Intensity: {source[2]:.2f}\n")
-                    # if source number is not greate than scenario sources print real source and error 
-                    if i < len(scenario.sources):
-                        real_source = scenario.sources[i]
-                        error = calculate_source_errors([real_source], [source])
-                        f.write(f"Real Source: ({real_source[0]:.2f}, {real_source[1]:.2f}), Intensity: {real_source[2]:.2f}\n")
-                        f.write(f"Errors: X: {error['x_error'][0]:.2f}, Y: {error['y_error'][0]:.2f}, Intensity: {error['intensity_error'][0]:.2f}\n")
                 f.write(f"Estimated Number of Sources: {sources['n_sources']}\n")
-                f.write(f"Errors in Number of Sources: {abs(len(scenario.sources) - sources['n_sources'])}\n")
     
     print(f"Run information saved to {filename}")
 
@@ -483,7 +476,11 @@ def estimate_sources(obs_wp, obs_vals, lambda_b, M_max):
 
 def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, M, n_samples, s_stages, prior_dist, prev_theta_samples=None, alpha=0.00001):
     # Step 1: Select γ1, ..., γs (these are parameters that control the tightness of the approximation)
-    gammas = np.linspace(0.1, 1, s_stages)
+    gammas = np.zeros(s_stages)
+    gammas[0] = 0.1
+    for k in range(1, s_stages):
+        gammas[k] = gammas[k-1] + (1 - gammas[0]) / (s_stages - 1)
+        
     # print("Gammas:", gammas)
     if prev_theta_samples is not None:
         # in this case we want to popultate half of the samples with the previous samples
@@ -705,16 +702,18 @@ if __name__ == "__main__":
         theta_samples = []
         iteration_counter = 1
         
+        bic_vals = []
         # Simulation loop
         for iter_val in range(iteration_step, len(boust.obs_wp) + iteration_step, iteration_step):
             iter_val = min(iter_val, len(boust.obs_wp))  # Ensure we do not go beyond the total number of waypoints
             obs_vals_send, obs_wp_send = current_obs_vals[:iter_val], current_obs_wp[:iter_val]
             
-            estimated_locs, estimated_num_sources, theta_samples, _ = estimate_sources_bayesian(
+            estimated_locs, estimated_num_sources, theta_samples, bic = estimate_sources_bayesian(
                 obs_wp_send, obs_vals_send, lambda_b, max_sources, n_samples, s_stages,
                 prev_theta_samples=[]
             )
             
+            bic_vals.append(bic)
             estimated_locs = estimated_locs.reshape((-1, 3))
 
             # Log details of the current estimation
@@ -722,5 +721,13 @@ if __name__ == "__main__":
             
             save_plot_iteration(iteration_counter, scenario, estimated_locs, obs_wp_send)
             iteration_counter += 1
-
+        # plot the evolution of the bic
+        plt.figure()
+        plt.plot(bic_vals)
+        plt.title("BIC Evolution")
+        plt.xlabel("Iteration")
+        plt.ylabel("BIC")
+        plt.grid()
+        plt.savefig(os.path.join(save_dir, f"bic_evolution_" + str(num_sources) + ".png"))
+        plt.close()
         create_gif(save_dir, "sources_estimation_test_" + str(num_sources) + ".gif")

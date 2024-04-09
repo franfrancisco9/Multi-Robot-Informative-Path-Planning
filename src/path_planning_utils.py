@@ -86,7 +86,7 @@ def run_number_from_folder():
     next_run_number = max(run_numbers) + 1 if run_numbers else 1
     return next_run_number
 
-def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list, rounds, run_number, save=False, show=False):
+def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list, source_list, rounds, run_number, save=False, show=False):
     """
     Generates and optionally saves or shows various plots related to a scenario.
     
@@ -140,6 +140,9 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
     axs[0, 1].plot(path.obs_wp[:, 0], path.obs_wp[:, 1], 'ro', markersize=5)  # Waypoints
     for source in scenario.sources:
         axs[0, 1].plot(source[0], source[1], 'rX', markersize=10, label='Source')
+    # plot the sources estimated
+    for source in zip(source_list['x'], source_list['y']):
+        axs[0, 1].plot(source[0], source[1], 'gX', markersize=10, label='Estimated Source')
     axs[0, 1].set_facecolor(cmap(0))
 
     # Plot Uncertainty Field
@@ -161,6 +164,10 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
     if show:
         plt.show()
     distance_histogram(scenario, path.obs_wp, save_fig_title.replace('.png', '_histogram.png'), show=show)
+    # Call source distance function and get the plot for errors between estimated and actual sources
+    # New: Call source_distance with the data from source_list
+    source_errors_plot_title = save_fig_title.replace('.png', '_source_errors.png')
+    source_distance(scenario, source_list, save_fig_title=source_errors_plot_title, show=show)
     plt.close()
 
     # Additional RRT-specific plots
@@ -233,7 +240,7 @@ def distance_histogram(scenario, obs_wp, save_fig_title=None, show=False):
     if show:
         plt.show()
 
-def save_run_info(run_number, rmse_list, entropy_list, args, folder_path="../runs_review"):
+def save_run_info(run_number, rmse_list, entropy_list, source_list, args, folder_path="../runs_review"):
     os.makedirs(folder_path, exist_ok=True)
     filename = os.path.join(folder_path, f"run_{run_number}.txt")
 
@@ -254,8 +261,83 @@ def save_run_info(run_number, rmse_list, entropy_list, args, folder_path="../run
             # order by the average of the values
             for strategy, values in sorted(scenario_entropy.items(), key=lambda x: np.mean(x[1])):
                 f.write(f"{strategy}: Avg Entropy = {np.mean(values):.4f}\n")
+        
+        for scenario, scenario_sources in source_list.items():
+            f.write(f"\n{scenario} Source Information:\n")
+            for strategy, sources in scenario_sources.items():
+                f.write(f"{strategy} Sources:\n")
+                for i, source in enumerate(zip(sources['x'], sources['y'], sources['intensity'])):
+                    f.write(f"Source {i + 1}: ({source[0]:.2f}, {source[1]:.2f}), Intensity: {source[2]:.2f}\n")
+                    # if source number is not greate than scenario sources print real source and error 
+                    if i < len(scenario.sources):
+                        real_source = scenario.sources[i]
+                        error = calculate_source_errors([real_source], [source])
+                        f.write(f"Real Source: ({real_source[0]:.2f}, {real_source[1]:.2f}), Intensity: {real_source[2]:.2f}\n")
+                        f.write(f"Errors: X: {error['x_error'][0]:.2f}, Y: {error['y_error'][0]:.2f}, Intensity: {error['intensity_error'][0]:.2f}\n")
+                f.write(f"Estimated Number of Sources: {sources['n_sources']}\n")
+                f.write(f"Errors in Number of Sources: {abs(len(scenario.sources) - sources['n_sources'])}\n")
     
     print(f"Run information saved to {filename}")
+
+def calculate_source_errors(actual_sources, estimated_locs):
+    errors = {'x_error': [], 'y_error': [], 'intensity_error': []}
+    for actual, estimated in zip(actual_sources, estimated_locs):
+        errors['x_error'].append(abs(actual[0] - estimated[0]))
+        errors['y_error'].append(abs(actual[1] - estimated[1]))
+        errors['intensity_error'].append(abs(actual[2] - estimated[2]))
+    return errors
+
+def source_distance(scenario, source_list, save_fig_title=None, show=False):
+    """
+    Plots errors in estimating the position and intensity of sources as scatter plots with error bars.
+
+    Parameters:
+    - scenario: The scenario object containing the actual sources.
+    - source_list: A dictionary containing estimated locations of the sources, number of sources, and errors.
+    - save_fig_title: The title of the figure to save (if saving is desired).
+    - show: A flag indicating whether to show the figure.
+    """
+    estimated_locs = np.array([source_list['x'], source_list['y'], source_list['intensity']]).T
+    estimated_num_sources = source_list['n_sources']
+
+    num_comparisons = min(len(scenario.sources), estimated_num_sources)
+    actual_sources = np.array(scenario.sources)[:num_comparisons]  # Compare only up to the minimum of actual and estimated sources
+    estimated_locs = estimated_locs[:num_comparisons]
+
+    # Calculating errors
+    errors = np.abs(actual_sources - estimated_locs)
+    x_errors, y_errors, intensity_errors = errors.T
+
+    fig, axs = plt.subplots(1, 3, figsize=(18, 6))
+
+    # Scatter plot for X Coordinate Errors
+    axs[0].scatter(range(num_comparisons), x_errors, color='skyblue', edgecolor='black')
+    axs[0].set_title('X Coordinate Errors')
+    axs[0].set_xlabel('Source Index')
+    axs[0].set_ylabel('Error in X')
+    axs[0].axhline(np.mean(x_errors), color='red', linestyle='--')  # Mean error line
+
+    # Scatter plot for Y Coordinate Errors
+    axs[1].scatter(range(num_comparisons), y_errors, color='skyblue', edgecolor='black')
+    axs[1].set_title('Y Coordinate Errors')
+    axs[1].set_xlabel('Source Index')
+    axs[1].set_ylabel('Error in Y')
+    axs[1].axhline(np.mean(y_errors), color='red', linestyle='--')  # Mean error line
+
+    # Scatter plot for Intensity Errors
+    axs[2].scatter(range(num_comparisons), intensity_errors, color='skyblue', edgecolor='black')
+    axs[2].set_title('Intensity Errors')
+    axs[2].set_xlabel('Source Index')
+    axs[2].set_ylabel('Error in Intensity')
+    axs[2].axhline(np.mean(intensity_errors), color='red', linestyle='--')  # Mean error line
+
+    plt.tight_layout()
+
+    if save_fig_title:
+        plt.savefig(save_fig_title)
+    if show:
+        plt.show()
+    plt.close()
 
 """
 Estimate Sources 
@@ -427,6 +509,7 @@ def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, 
         weights /= np.sum(weights)  # Ensure the weights sum to 1
         return weights
 
+    # for k in tqdm(range(s_stages), desc="Progressive Correction"):
     for k in range(s_stages):
         gamma = gammas[k]
         weights = calc_weights(theta_samples_prev, gamma, obs_wp, obs_vals, lambda_b, M)
@@ -472,7 +555,7 @@ def estimate_sources_bayesian(obs_wp, obs_vals, lambda_b, max_sources, n_samples
     best_estimate = None
     best_M = 0
     
-    for M in range(1, max_sources + 1):
+    for M in tqdm(range(1, max_sources + 1), desc="Estimating Sources"):
         #print(f"Estimating sources for M = {M}/{max_sources}")
         # Define the prior distribution for source parameters (uniform within workspace)
         prior_x = uniform(loc=0, scale=40)  # Uniform distribution for x

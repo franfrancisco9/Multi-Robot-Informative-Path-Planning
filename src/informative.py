@@ -127,7 +127,7 @@ class InformativePathPlanning(BaseInformative):
         Executes the path planning process and returns the predicted spatial field.
         """
         self.generate_path()
-        print(f"Path length: {len(self.obs_wp)}")
+        # print(f"Path length: {len(self.obs_wp)}")
         waypoints = np.array(self.obs_wp)
-        measurements = np.array(self.observations)
-        return self.scenario.predict_spatial_field(waypoints, measurements)
+        self.measurements = np.array(self.observations)
+        return self.scenario.predict_spatial_field(waypoints, self.measurements)

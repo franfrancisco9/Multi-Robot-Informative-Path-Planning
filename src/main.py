@@ -8,7 +8,7 @@ from boustrophedon import Boustrophedon
 from radiation import RadiationField
 from informative import InformativePathPlanning
 from RRT import *
-from path_planning_utils import helper_plot, calculate_differential_entropy, save_run_info, run_number_from_folder
+from path_planning_utils import helper_plot, calculate_differential_entropy, save_run_info, run_number_from_folder, calculate_source_errors
 
 def load_configuration(config_path):
     """Load configuration from a JSON file."""
@@ -93,6 +93,7 @@ def run_simulations(scenarios, strategy_instances, args):
     print(f"Run number: {run_number}")
     RMSE_per_scenario = {}
     Diff_Entropy_per_scenario = {}
+    Source_per_scenario = {}
 
     with tqdm(total=args["rounds"] * len(scenarios) * len(strategy_instances), desc="Overall Progress") as pbar:
         for scenario_idx, scenario in enumerate(scenarios, start=1):
@@ -100,7 +101,7 @@ def run_simulations(scenarios, strategy_instances, args):
             # Temporary storage for the current scenario's RMSE and differential entropy
             RMSE_lists = {strategy_name: [] for strategy_name in strategy_instances}
             Diff_Entropy_lists = {strategy_name: [] for strategy_name in strategy_instances}
-            
+            Source_lists = {strategy_name: {'x_error': [], 'y_error': [], 'intensity_error': []} for strategy_name in strategy_instances}
             for round_number in range(1, args["rounds"] + 1):
                 for strategy_name, constructor in strategy_instances.items():
                     strategy = constructor(scenario)
@@ -109,17 +110,35 @@ def run_simulations(scenarios, strategy_instances, args):
                     Z_true = scenario.ground_truth()
                     RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
                     Diff_Entropy = calculate_differential_entropy(std)
+                    # Obtain the estimated locations, number of sources, and theta samples
+                    estimated_locs, estimated_num_sources, _, _ = estimate_sources_bayesian(
+                        strategy.obs_wp, strategy.measurements, 
+                        lambda_b=args["lambda_b"], 
+                        max_sources=args["max_sources"], 
+                        n_samples=args["n_samples"], 
+                        s_stages=args["s_stages"]
+                    )
+                    estimated_locs = np.array(estimated_locs).reshape(-1, 3)
+                    print(f"Estimated number of sources: {estimated_num_sources}")
+                    print(f"Estimated locations: {estimated_locs}")
+                    Source_lists[strategy_name]['x'] = [source[0] for source in estimated_locs]
+                    Source_lists[strategy_name]['y'] = [source[1] for source in estimated_locs]
+                    Source_lists[strategy_name]['intensity'] = [source[2] for source in estimated_locs]
+                    Source_lists[strategy_name]['n_sources'] = estimated_num_sources
+                    
                     tqdm.write(f"{strategy_name} RMSE: {RMSE}")
                     RMSE_lists[strategy_name].append(RMSE)
                     Diff_Entropy_lists[strategy_name].append(Diff_Entropy)
                     if round_number == args["rounds"]:
-                        helper_plot(scenario, scenario_idx, Z_true, Z_pred, std, strategy, RMSE_lists[strategy_name], args["rounds"], run_number, save=args["save"], show=args["show"])
+                        helper_plot(scenario, scenario_idx, Z_true, Z_pred, std, strategy, RMSE_lists[strategy_name], Source_lists[strategy_name], 
+                                    args["rounds"], run_number, save=args["save"], show=args["show"])
                     pbar.update(1)
             RMSE_per_scenario[f"Scenario_{scenario_idx}"] = RMSE_lists
             Diff_Entropy_per_scenario[f"Scenario_{scenario_idx}"] = Diff_Entropy_lists
+            Source_per_scenario[f"Scenario_{scenario_idx}"] = Source_lists
 
     # Save run information after processing all scenarios
-    save_run_info(run_number, RMSE_per_scenario, Diff_Entropy_per_scenario, args)
+    save_run_info(run_number, RMSE_per_scenario, Diff_Entropy_per_scenario, Source_per_scenario, args)
 
 def main():
     parser = argparse.ArgumentParser(description="Run path planning scenarios.")

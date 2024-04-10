@@ -134,13 +134,13 @@ class InformativePathPlanning(BaseInformative):
         return self.scenario.predict_spatial_field(waypoints, self.measurements)
 
 class InformativeBICPathPlanning(BaseInformative):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, lambda_b=1, max_sources=1, n_samples=20, s_stages=5, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = "InformativeBICPathPlanning"
-        self.lambda_b = kwargs.get('lambda_b', 1)
-        self.max_sources = kwargs.get('max_sources', 3)
-        self.n_samples = kwargs.get('n_samples', 500)
-        self.s_stages = kwargs.get('s_stages', 20)
+        self.lambda_b = lambda_b
+        self.max_sources = max_sources
+        self.n_samples = n_samples
+        self.s_stages = s_stages
         self.best_bic = -np.inf  # Maximize BIC
         self.best_estimates = None
         self.last_best_location = None
@@ -172,7 +172,6 @@ class InformativeBICPathPlanning(BaseInformative):
         measurement = self.scenario.simulate_measurements([point])[0]
         self.observations.append(measurement)
         self.obs_wp.append(point)
-        self.full_path.append(point)
 
         self.estimate_counter += 1
         if self.estimate_counter % 10 == 0 or self.estimate_counter == 1:
@@ -212,6 +211,7 @@ class InformativeBICPathPlanning(BaseInformative):
         """
         self.generate_path()
         self.obs_wp = np.array(self.obs_wp)
+        self.full_path = self.obs_wp.reshape(-1, 2).T
         self.measurements = np.array(self.observations)
         return self.scenario.predict_spatial_field(self.obs_wp, self.measurements)
     

@@ -6,7 +6,7 @@ from tqdm import tqdm
 # Assuming the modules are correctly implemented
 from boustrophedon import Boustrophedon
 from radiation import RadiationField
-from informative import InformativePathPlanning
+from informative import *
 from RRT import *
 from path_planning_utils import helper_plot, calculate_differential_entropy, save_run_info, run_number_from_folder, calculate_source_errors
 
@@ -111,7 +111,7 @@ def run_simulations(scenarios, strategy_instances, args):
                     RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
                     Diff_Entropy = calculate_differential_entropy(std)
                     # Obtain the estimated locations, number of sources, and theta samples
-                    estimated_locs, estimated_num_sources, _, _ = estimate_sources_bayesian(
+                    estimated_locs, estimated_num_sources, _ = estimate_sources_bayesian(
                         strategy.obs_wp, strategy.measurements, 
                         lambda_b=args["lambda_b"], 
                         max_sources=args["max_sources"], 

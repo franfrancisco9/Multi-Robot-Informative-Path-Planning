@@ -1,6 +1,7 @@
 import numpy as np
 from tqdm import tqdm
 from scipy.spatial import KDTree
+from path_planning_utils import estimate_sources_bayesian, save_plot_iteration
 
 class BaseInformative:
     """
@@ -131,3 +132,86 @@ class InformativePathPlanning(BaseInformative):
         waypoints = np.array(self.obs_wp)
         self.measurements = np.array(self.observations)
         return self.scenario.predict_spatial_field(waypoints, self.measurements)
+
+class InformativeBICPathPlanning(BaseInformative):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name = "InformativeBICPathPlanning"
+        self.lambda_b = kwargs.get('lambda_b', 1)
+        self.max_sources = kwargs.get('max_sources', 3)
+        self.n_samples = kwargs.get('n_samples', 500)
+        self.s_stages = kwargs.get('s_stages', 20)
+        self.best_bic = -np.inf  # Maximize BIC
+        self.best_estimates = None
+        self.last_best_location = None
+        self.direction = np.array([1, 1])  # Initial movement direction
+        self.full_path = []
+        self.estimate_counter = 0  # Counter to track waypoints since last estimation
+
+
+    def select_next_point(self, current_position):
+            # Determine the direction towards the last best location or select a new random direction
+            if self.last_best_location is not None and np.linalg.norm(current_position - self.last_best_location) >= 5:
+                # Move towards the last known best source location
+                direction = self.last_best_location - current_position
+                direction /= np.linalg.norm(direction)  # Normalize
+                self.direction = direction
+                step_size = self.d_waypoint_distance
+            else:
+                # Go away from the source if no best location is known
+                direction = self.direction
+                step_size = self.d_waypoint_distance
+
+
+            next_point = current_position + direction * step_size
+            # Ensure the next point is within workspace boundaries
+            next_point = np.clip(next_point, [0, 0], self.scenario.workspace_size)
+            return next_point
+    
+    def add_observation_and_update(self, point):
+        measurement = self.scenario.simulate_measurements([point])[0]
+        self.observations.append(measurement)
+        self.obs_wp.append(point)
+        self.full_path.append(point)
+
+        self.estimate_counter += 1
+        if self.estimate_counter % 10 == 0 or self.estimate_counter == 1:
+            estimated_locs, estimated_num_sources, bic = estimate_sources_bayesian(
+                self.obs_wp, self.observations, self.lambda_b, self.max_sources, self.n_samples, self.s_stages
+            )
+            estimated_locs = np.array(estimated_locs).reshape(-1, 3)
+            if bic > self.best_bic:  # Seeking to maximize BIC
+                self.best_bic = bic
+                self.best_estimates = (estimated_locs, estimated_num_sources)
+            print(f"New best BIC: {bic}")
+            print(f"Estimated number of sources: {estimated_num_sources}")
+            print(f"Estimated locations: {estimated_locs}")
+            #save_plot_iteration(1, self.scenario, estimated_locs, self.obs_wp)
+            if estimated_locs.size > 0:  # If there are estimated sources, update the last best location
+                self.last_best_location = estimated_locs[np.argmin(np.linalg.norm(estimated_locs[:, :2] - point, axis=1))][:2]
+
+    def generate_path(self):
+        print("Real Sources", self.scenario.sources)
+        current_position = np.array([0.5, 0.5])  # Example starting position
+        self.full_path = [current_position]
+        with tqdm(total=self.budget, desc="Running Informative BIC Path Planning") as pbar:
+            while self.budget > 0:
+                next_point = self.select_next_point(current_position)
+                # add every 5th point to the observations
+                self.add_observation_and_update(next_point)
+                distance_travelled = np.linalg.norm(next_point - current_position)
+                self.budget -= distance_travelled
+                pbar.update(distance_travelled)
+                current_position = next_point
+                pbar.update(distance_travelled)
+
+    def run(self):
+        """
+        Executes the path planning process aiming to maximize the BIC for source estimation
+        and returns the predicted spatial field and standard deviation.
+        """
+        self.generate_path()
+        self.obs_wp = np.array(self.obs_wp)
+        self.measurements = np.array(self.observations)
+        return self.scenario.predict_spatial_field(self.obs_wp, self.measurements)
+    

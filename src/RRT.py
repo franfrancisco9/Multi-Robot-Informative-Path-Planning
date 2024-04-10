@@ -428,14 +428,13 @@ class InformativeSourceMetricRRTPathPlanning(StrategicRRTPathPlanning):
             temp_obs_vals = np.append(self.observations, self.scenario.simulate_measurements([point])[0])
 
             # Run Bayesian estimation with the candidate point
-            _, _, _, bic = estimate_sources_bayesian(
+            _, _, bic = estimate_sources_bayesian(
                 temp_obs_wp,
                 temp_obs_vals,
                 self.lambda_b,
                 self.max_sources,
                 self.n_samples,
                 self.s_stages,
-                prev_theta_samples=self.prev_theta_samples
             )
 
             # Store the BIC value

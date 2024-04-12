@@ -140,9 +140,11 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
     axs[0, 1].plot(path.obs_wp[:, 0], path.obs_wp[:, 1], 'ro', markersize=5)  # Waypoints
     for source in scenario.sources:
         axs[0, 1].plot(source[0], source[1], 'rX', markersize=10, label='Source')
-    # plot the sources estimated
-    for source in zip(source_list['x'], source_list['y']):
+    # plot the sources estimated of the last run
+    source_estimated = source_list['source'][-1]
+    for source in source_estimated:
         axs[0, 1].plot(source[0], source[1], 'gX', markersize=10, label='Estimated Source')
+
     axs[0, 1].set_facecolor(cmap(0))
 
     # Plot Uncertainty Field
@@ -240,35 +242,78 @@ def distance_histogram(scenario, obs_wp, save_fig_title=None, show=False):
     if show:
         plt.show()
 
-def save_run_info(run_number, rmse_list, entropy_list, source_list, args, folder_path="../runs_review"):
+
+def save_run_info(run_number, rmse_per_scenario, entropy_per_scenario, source_per_scenario, args, scenario_classes, folder_path="../runs_review"):
     os.makedirs(folder_path, exist_ok=True)
     filename = os.path.join(folder_path, f"run_{run_number}.txt")
+
+    def calculate_rmse(predicted_sources, actual_sources):
+        """Calculate RMSE for x, y, and intensity between predicted and actual sources."""
+        if not predicted_sources.size or not actual_sources.size:
+            return [np.nan] * len(actual_sources)  # Return "N/A" for each actual source if no predictions or no actual sources
+
+        # Initialize an array to store RMSE values for each actual source
+        rmse_results = []
+
+        # Calculate RMSE for each actual source by finding the closest predicted source
+        for actual in actual_sources:
+            distances = np.linalg.norm(predicted_sources[:, :2] - actual[:2], axis=1)
+            closest_idx = np.argmin(distances)
+            closest_predicted = predicted_sources[closest_idx]
+
+            if len(predicted_sources) < len(actual_sources):
+                # Check if there are fewer predicted than actual sources and handle accordingly
+                rmse_x = np.sqrt(np.mean((actual[0] - closest_predicted[0])**2)) if closest_idx < len(predicted_sources) else np.nan
+                rmse_y = np.sqrt(np.mean((actual[1] - closest_predicted[1])**2)) if closest_idx < len(predicted_sources) else np.nan
+                rmse_intensity = np.sqrt(np.mean((actual[2] - closest_predicted[2])**2)) if closest_idx < len(predicted_sources) else np.nan
+            else:
+                rmse_x = np.sqrt(np.mean((actual[0] - closest_predicted[0])**2))
+                rmse_y = np.sqrt(np.mean((actual[1] - closest_predicted[1])**2))
+                rmse_intensity = np.sqrt(np.mean((actual[2] - closest_predicted[2])**2))
+
+            rmse_results.append((rmse_x, rmse_y, rmse_intensity))
+
+        return rmse_results
 
     with open(filename, 'w') as f:
         f.write("Run Summary\n")
         f.write("=" * 40 + "\n\nArguments:\n")
         for key, value in args.items():
-            f.write(f"{key}: {value}\n")
-        
-        for scenario, scenario_rmse in rmse_list.items():
-            f.write(f"\n{scenario} RMSE:\n")
-            # order by the average of the values
-            for strategy, values in sorted(scenario_rmse.items(), key=lambda x: np.mean(x[1])):
-                f.write(f"{strategy}: Avg RMSE = {np.mean(values):.4f}\n")
-        
-        for scenario, scenario_entropy in entropy_list.items():
-            f.write(f"\n{scenario} Differential Entropy:\n")
-            # order by the average of the values
-            for strategy, values in sorted(scenario_entropy.items(), key=lambda x: np.mean(x[1])):
-                f.write(f"{strategy}: Avg Entropy = {np.mean(values):.4f}\n")
-        
-        for scenario, scenario_sources in source_list.items():
-            f.write(f"\n{scenario} Source Information:\n")
-            for strategy, sources in scenario_sources.items():
-                f.write(f"{strategy} Sources:\n")
-                for i, source in enumerate(zip(sources['x'], sources['y'], sources['intensity'])):
-                    f.write(f"Source {i + 1}: ({source[0]:.2f}, {source[1]:.2f}), Intensity: {source[2]:.2f}\n")
-                f.write(f"Estimated Number of Sources: {sources['n_sources']}\n")
+            f.write(f"\t{key}: {value}\n")
+
+        for scenario_idx, scenario_class in enumerate(scenario_classes, start=1):
+            scenario_key = f"Scenario_{scenario_idx}"
+            actual_sources = np.array([[s[0], s[1], s[2]] for s in scenario_class.sources])
+
+            f.write(f"\n{scenario_key} Metrics:\n")
+            f.write("\tRMSE:\n")
+            if scenario_key in rmse_per_scenario:
+                for strategy, rmses in rmse_per_scenario[scenario_key].items():
+                    avg_rmse = np.mean(rmses)
+                    f.write(f"\t\t{strategy}: Avg RMSE = {avg_rmse:.4f}, Rounds = {len(rmses)}\n")
+            
+            f.write("\tDifferential Entropy:\n")
+            if scenario_key in entropy_per_scenario:
+                for strategy, entropies in entropy_per_scenario[scenario_key].items():
+                    avg_entropy = np.mean(entropies)
+                    f.write(f"\t\t{strategy}: Avg Entropy = {avg_entropy:.4f}, Rounds = {len(entropies)}\n")
+            
+            f.write("\tSource Information:\n")
+            if scenario_key in source_per_scenario:
+                for strategy, info in source_per_scenario[scenario_key].items():
+                    f.write(f"\tStrategy: {strategy}\n")
+                    for round_index, predicted_sources in enumerate(info['source'], start=1):
+                        predicted_sources = np.array(predicted_sources).reshape(-1, 3)
+                        rmse = calculate_rmse(predicted_sources, actual_sources) if predicted_sources.size else "N/A"
+                        f.write(f"\t\tRound {round_index} - Predicted sources (x, y, intensity):\n")
+                        f.write(f"\t\t\t{predicted_sources.tolist()}\n")
+                        f.write(f"\t\t\tRMSE (Location & Intensity): {rmse}\n")
+                        f.write(f"\t\tNumber of predicted sources: {info['n_sources'][round_index - 1]}\n")
+                        correct_number = "Yes" if info['n_sources'][-1] == len(actual_sources) else "No"
+                        f.write(f"\t\tCorrect number of sources predicted in last round: {correct_number}\n")
+            f.write(f"\tActual sources (x, y, intensity):\n")
+            f.write(f"\t\t{actual_sources.tolist()}\n")
+
     
     print(f"Run information saved to {filename}")
 
@@ -283,55 +328,55 @@ def calculate_source_errors(actual_sources, estimated_locs):
 def source_distance(scenario, source_list, save_fig_title=None, show=False):
     """
     Plots errors in estimating the position and intensity of sources as scatter plots with error bars.
-
-    Parameters:
-    - scenario: The scenario object containing the actual sources.
-    - source_list: A dictionary containing estimated locations of the sources, number of sources, and errors.
-    - save_fig_title: The title of the figure to save (if saving is desired).
-    - show: A flag indicating whether to show the figure.
     """
-    estimated_locs = np.array([source_list['x'], source_list['y'], source_list['intensity']]).T
-    estimated_num_sources = source_list['n_sources']
+    x_errors = []
+    y_errors = []
+    intensity_errors = []
+    n_sources_estimated = []
 
-    num_comparisons = min(len(scenario.sources), estimated_num_sources)
-    actual_sources = np.array(scenario.sources)[:num_comparisons]  # Compare only up to the minimum of actual and estimated sources
-    estimated_locs = estimated_locs[:num_comparisons]
+    # Loop over each actual source and compare it to corresponding predicted source
+    for i, actual_source in enumerate(scenario.sources):
+        these_x_errors = []
+        these_y_errors = []
+        these_intensity_errors = []
 
-    # Calculating errors
-    errors = np.abs(actual_sources - estimated_locs)
-    x_errors, y_errors, intensity_errors = errors.T
+        # Compare with each round of predictions
+        for sources in source_list['source']:
+            if i < len(sources):
+                these_x_errors.append(abs(actual_source[0] - sources[i][0]))
+                these_y_errors.append(abs(actual_source[1] - sources[i][1]))
+                these_intensity_errors.append(abs(actual_source[2] - sources[i][2]))
+        
+        x_errors.append(these_x_errors)
+        y_errors.append(these_y_errors)
+        intensity_errors.append(these_intensity_errors)
+        n_sources_estimated.append(len(these_x_errors))
 
-    fig, axs = plt.subplots(1, 3, figsize=(18, 6))
+    # Plotting
+    fig, ax = plt.subplots(3, 1, figsize=(10, 15), sharex=True)
+    source_ids = [f"Source {i+1}" for i in range(len(scenario.sources))]
 
-    # Scatter plot for X Coordinate Errors
-    axs[0].scatter(range(num_comparisons), x_errors, color='skyblue', edgecolor='black')
-    axs[0].set_title('X Coordinate Errors')
-    axs[0].set_xlabel('Source Index')
-    axs[0].set_ylabel('Error in X')
-    axs[0].axhline(np.mean(x_errors), color='red', linestyle='--')  # Mean error line
+    for idx, (errors, label) in enumerate(zip([x_errors, y_errors, intensity_errors], ['X Error', 'Y Error', 'Intensity Error'])):
+        averages = [np.nanmean(e) for e in errors]
+        std_devs = [np.nanstd(e) for e in errors]
+        ax[idx].bar(source_ids, averages, yerr=std_devs, alpha=0.6, color='b', label=label)
+        ax[idx].set_ylabel('Error')
+        ax[idx].set_title(label)
+        ax[idx].legend()
 
-    # Scatter plot for Y Coordinate Errors
-    axs[1].scatter(range(num_comparisons), y_errors, color='skyblue', edgecolor='black')
-    axs[1].set_title('Y Coordinate Errors')
-    axs[1].set_xlabel('Source Index')
-    axs[1].set_ylabel('Error in Y')
-    axs[1].axhline(np.mean(y_errors), color='red', linestyle='--')  # Mean error line
+        # Add vertical lines for missing data
+        for i, e in enumerate(errors):
+            if all(np.isnan(e)):
+                ax[idx].axvline(i, color='r', linestyle='--', label='Missing estimate')
 
-    # Scatter plot for Intensity Errors
-    axs[2].scatter(range(num_comparisons), intensity_errors, color='skyblue', edgecolor='black')
-    axs[2].set_title('Intensity Errors')
-    axs[2].set_xlabel('Source Index')
-    axs[2].set_ylabel('Error in Intensity')
-    axs[2].axhline(np.mean(intensity_errors), color='red', linestyle='--')  # Mean error line
-
-    plt.tight_layout()
-
+    plt.xlabel('Sources')
+    plt.suptitle('Errors in Source Estimation')
+    plt.tight_layout(rect=[0, 0.03, 1, 0.97])
     if save_fig_title:
         plt.savefig(save_fig_title)
     if show:
         plt.show()
     plt.close()
-
 """
 Estimate Sources 
 Citation:

@@ -101,7 +101,7 @@ def run_simulations(scenarios, strategy_instances, args):
             # Temporary storage for the current scenario's RMSE and differential entropy
             RMSE_lists = {strategy_name: [] for strategy_name in strategy_instances}
             Diff_Entropy_lists = {strategy_name: [] for strategy_name in strategy_instances}
-            Source_lists = {strategy_name: {'x_error': [], 'y_error': [], 'intensity_error': []} for strategy_name in strategy_instances}
+            Source_lists = {strategy_name: {'source':[], 'n_sources': []} for strategy_name in strategy_instances}
             for round_number in range(1, args["rounds"] + 1):
                 for strategy_name, constructor in strategy_instances.items():
                     strategy = constructor(scenario)
@@ -121,10 +121,9 @@ def run_simulations(scenarios, strategy_instances, args):
                     estimated_locs = np.array(estimated_locs).reshape(-1, 3)
                     print(f"Estimated number of sources: {estimated_num_sources}")
                     print(f"Estimated locations: {estimated_locs}")
-                    Source_lists[strategy_name]['x'] = [source[0] for source in estimated_locs]
-                    Source_lists[strategy_name]['y'] = [source[1] for source in estimated_locs]
-                    Source_lists[strategy_name]['intensity'] = [source[2] for source in estimated_locs]
-                    Source_lists[strategy_name]['n_sources'] = estimated_num_sources
+                    Source_lists[strategy_name]['source'].append(estimated_locs)
+                    print(f"Source list: {Source_lists[strategy_name]['source']}")
+                    Source_lists[strategy_name]['n_sources'].append(estimated_num_sources)
                     
                     tqdm.write(f"{strategy_name} RMSE: {RMSE}")
                     RMSE_lists[strategy_name].append(RMSE)
@@ -138,7 +137,7 @@ def run_simulations(scenarios, strategy_instances, args):
             Source_per_scenario[f"Scenario_{scenario_idx}"] = Source_lists
 
     # Save run information after processing all scenarios
-    save_run_info(run_number, RMSE_per_scenario, Diff_Entropy_per_scenario, Source_per_scenario, args)
+    save_run_info(run_number, RMSE_per_scenario, Diff_Entropy_per_scenario, Source_per_scenario, args, scenarios)
 
 def main():
     parser = argparse.ArgumentParser(description="Run path planning scenarios.")

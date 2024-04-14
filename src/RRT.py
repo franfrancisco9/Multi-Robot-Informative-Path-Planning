@@ -10,7 +10,7 @@ class BaseRRTPathPlanning(BaseInformative):
         super().__init__(*args, **kwargs)
         self.budget_iterations = budget_iter
         self.full_path = []
-        self.observations = []
+        self.measurements = []
         self.trees = TreeCollection()
         self.uncertainty_reduction = []
         self.name = "BaseRRTPath"
@@ -48,10 +48,10 @@ class BaseRRTPathPlanning(BaseInformative):
     def update_observations_and_model(self, path):
         for point in path:
             measurement = self.scenario.simulate_measurements([point])[0]
-            self.observations.append(measurement)
+            self.measurements.append(measurement)
             self.obs_wp.append(point)
 
-        self.scenario.gp.fit(np.array(self.obs_wp), np.log10(self.observations))
+        self.scenario.gp.fit(np.array(self.obs_wp), np.log10(self.measurements))
 
     def run(self):
         budget_portion = self.budget / self.budget_iterations
@@ -84,7 +84,7 @@ class BaseRRTPathPlanning(BaseInformative):
             
         self.obs_wp = np.array(self.obs_wp)
         self.full_path = np.array(self.full_path).reshape(-1, 2).T
-        Z_pred, std = self.scenario.predict_spatial_field(self.obs_wp, np.array(self.observations))
+        Z_pred, std = self.scenario.predict_spatial_field(self.obs_wp, np.array(self.measurements))
         return Z_pred, std
 
     def is_within_workspace(self, point):
@@ -417,29 +417,22 @@ class InformativeSourceMetricRRTPathPlanning(StrategicRRTPathPlanning):
         Override the node selection strategy to use Bayesian source estimation
         to guide the search toward the most informative direction.
         """
-        # This will store the BIC values for each node
-        bic_values = []
-        if self.observations == []:
+        if self.measurements == []:
             return 0
-        # Calculate BIC for the current observation set with each candidate node
-        for point in [node.point]:
-            point = np.array([node.point])  # Ensure point is a 2D array for safe stacking
-            temp_obs_wp = np.vstack([np.array(self.obs_wp), point])
-            temp_obs_vals = np.append(self.observations, self.scenario.simulate_measurements([point])[0])
+        point = np.array([node.point])  # Ensure point is a 2D array for safe stacking
+        temp_obs_wp = np.vstack([np.array(self.obs_wp), point])
+        temp_obs_vals = np.append(self.measurements, self.scenario.simulate_measurements([point])[0])
 
-            # Run Bayesian estimation with the candidate point
-            _, _, bic = estimate_sources_bayesian(
-                temp_obs_wp,
-                temp_obs_vals,
-                self.lambda_b,
-                self.max_sources,
-                self.n_samples,
-                self.s_stages,
-            )
-
-            # Store the BIC value
-            bic_values.append(bic)
+        # Run Bayesian estimation with the candidate point
+        _, _, bic = estimate_sources_bayesian(
+            temp_obs_wp,
+            temp_obs_vals,
+            self.lambda_b,
+            self.max_sources,
+            self.n_samples,
+            self.s_stages,
+        )
 
         # You might use BIC values to prefer nodes leading towards lower BIC (higher information gain)
         # Here, for simplicity, we return the BIC value itself as the 'cost' to minimize.
-        return -bic_values[0]  # Since there's only one point, return its BIC value
+        return -bic

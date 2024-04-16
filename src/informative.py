@@ -151,24 +151,20 @@ class InformativeBICPathPlanning(BaseInformative):
 
     def select_next_point(self, current_position):
         """
-        Selects the next point based on the current understanding of the environment.
-        Initially random exploration, could be improved to use current estimates.
+        Use optization to run the estimation_bayesian function and choose the next point. Consider a grid of points using kd-tree.
         """
-        step_size = self.d_waypoint_distance
-        # This example uses a simple strategy. Consider enhancing this with your insights.
-        direction = np.random.rand(2) * 2 - 1
-        direction /= np.linalg.norm(direction)
-        next_point = current_position + direction * step_size
-        return np.clip(next_point, [0, 0], self.scenario.workspace_size)
+        # candidate locations to move with kd-tree
+        indices = self.grid_kdtree.query_ball_point(current_position, self.d_waypoint_distance)
+        valid_points = self.grid[indices]
+        from scipy.optimize import minimize
+        best_point = None
+        best_bic = -np.inf
+        
 
     def add_observation_and_update(self, point):
         measurement = self.scenario.simulate_measurements([point])[0]
         self.observations.append(measurement)
         self.obs_wp.append(point)
-
-        self.estimate_counter += 1
-        if self.estimate_counter % 10 == 0 or self.estimate_counter == 1:
-            self.perform_estimation()
 
     def perform_estimation(self):
         estimated_locs, estimated_num_sources, bic = estimate_sources_bayesian(

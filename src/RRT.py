@@ -401,7 +401,10 @@ class InformativeRRTStarPathPlanning(BaseRRTStarPathPlanning):
         path_selection = StrategicRRTPathPlanning.select_path
         return path_selection(self)
     
-
+class InformativeTreeNode(TreeNode):
+    def __init__(self, point, parent=None):
+        super().__init__(point, parent)
+        self.information = 0  # Initialize the information gain attribute
 
 class InformativeSourceMetricRRTPathPlanning(BaseInformative):
     def __init__(self, *args, budget_iter=10, lambda_b=1, max_sources=1, n_samples=20, s_stages=5, **kwargs):
@@ -432,6 +435,9 @@ class InformativeSourceMetricRRTPathPlanning(BaseInformative):
                 nearest_node.children.append(new_node)
                 self.tree_nodes.append(new_node)
                 distance_travelled += np.linalg.norm(new_node.point - nearest_node.point)
+                
+                # Update the information gain for the new node
+                new_node.information = self.radiation_gain(new_node)
 
                 self.rewire(X_near, new_node)
                 if distance_travelled >= budget_portion:
@@ -442,8 +448,8 @@ class InformativeSourceMetricRRTPathPlanning(BaseInformative):
         direction = target_point - nearest_node.point
         distance = np.linalg.norm(direction)
         direction /= max(distance, 1e-8)  # Avoid division by zero
-        new_point = nearest_node.point + direction * min(self.d_waypoint_distance, distance)
-        return TreeNode(new_point)
+        new_point = nearest_node.point + direction * min(distance, self.d_waypoint_distance)
+        return InformativeTreeNode(new_point)
 
     def nearest(self, target_point):
         return min(self.tree_nodes, key=lambda node: np.linalg.norm(node.point - target_point))
@@ -484,7 +490,7 @@ class InformativeSourceMetricRRTPathPlanning(BaseInformative):
         return np.linalg.norm(x1.point - x2.point)
     
     def initialize_tree(self, start_position):
-        self.root = TreeNode(start_position)
+        self.root = InformativeTreeNode(start_position)
         self.current_position = start_position
         self.tree_nodes = [self.root]
 
@@ -512,24 +518,19 @@ class InformativeSourceMetricRRTPathPlanning(BaseInformative):
                 else:
                     break  # If no path is generated, exit the loop
 
-                if len(self.measurements) % 10 == 0:
+                if len(self.measurements) % 5 == 0:
                     self.estimate_sources()
 
             return self.finalize()
         
     def select_path(self):
-        # Random path selection as the baseline behavior
         leaf_nodes = [node for node in self.tree_nodes if not node.children]
         if leaf_nodes:
-            selected_leaf = self.select_leaf_based_on_gain(leaf_nodes)
-            # Trace back to root from the selected leaf
-            path = []
-            current_node = selected_leaf
-            while current_node is not None:
-                path.append(current_node.point)
-                current_node = current_node.parent
-            path.reverse()  # Reverse to start from the root
-            return path
+            # Select the leaf with the highest information gain
+            selected_leaf = max(leaf_nodes, key=lambda node: node.information)
+            # test random selection
+            # selected_leaf = np.random.choice(leaf_nodes)
+            return self.trace_path_to_root(selected_leaf)
         else:
             return []
     
@@ -578,10 +579,9 @@ class InformativeSourceMetricRRTPathPlanning(BaseInformative):
             d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
             radiation_gain += intensity / d_src**2
             
-            # add a penalty term the more observations closer to the source the agent has
-            # in a radius of d_waypoint_distance
-            n_close_observations = sum([1 for obs in self.obs_wp if np.linalg.norm(obs - node.point) < self.d_waypoint_distance])
-            radiation_gain -= n_close_observations * intensity / d_src**2
+            # if there are more than 5 observations close to an estimated source, add a great peanlty to the radiation gain
+            # if np.sum(np.linalg.norm(self.obs_wp - np.array([x_k, y_k]), axis=1) < 1) > 5:
+            #     radiation_gain -= intensity * 1000
 
         return radiation_gain
    

@@ -134,3 +134,91 @@ def estimate_sources(obs_wp, obs_vals, lambda_b, M_max):
 
     return best_model, best_M
 
+class AdaptiveRRTPathPlanning(BaseRRTPathPlanning):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name = "AdaptiveRRTPath"
+        # Directional bias is initialized as None; it will be a unit vector pointing in the preferred direction
+        self.directional_bias = None
+        self.last_uncertainty = np.inf
+
+    def select_path(self):
+        # Obtain all leaf nodes and their associated points
+        leaf_nodes = [node for node in self.tree_nodes if not node.children]
+        leaf_points = np.array([node.point for node in leaf_nodes])
+        
+        # Predict standard deviations for leaf points
+        _, stds = self.scenario.gp.predict(leaf_points, return_std=True)
+        mean_std = np.mean(stds)
+        
+        # Update uncertainty reduction history
+        self.uncertainty_reduction.append(mean_std)
+        
+        # Determine if the new direction is better or worse
+        if mean_std < self.last_uncertainty:
+            improvement = True
+        else:
+            improvement = False
+        self.last_uncertainty = mean_std
+
+        # Apply directional bias to leaf node selection if it exists
+        if self.directional_bias is not None and leaf_nodes:
+            directional_scores = self.evaluate_directional_bias(leaf_points, improvement)
+            selected_idx = np.argmax(directional_scores)
+        else:
+            selected_idx = np.argmax(stds)  # Default behavior without bias
+        
+        selected_leaf = leaf_nodes[selected_idx]
+
+        # Trace back to root from the selected leaf to form a path
+        path = self.trace_path_to_root(selected_leaf)
+        
+        # Update the directional bias based on the chosen path
+        self.update_directional_bias(path)
+        
+        return path
+    
+class BiasRRTPathPlanning(BaseRRTPathPlanning):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name = "BiasRRTPath"
+
+    def select_path(self):
+        leaf_nodes = [node for node in self.tree_nodes if not node.children]
+        leaf_points = np.array([node.point for node in leaf_nodes])
+        mus, std = self.scenario.gp.predict(leaf_points, return_std=True)
+        self.uncertainty_reduction.append(np.mean(std))
+        min_mu_idx = np.argmax(mus)  # Choose the leaf with the minimum expected mean (seeking sources)
+        selected_leaf = leaf_nodes[min_mu_idx]
+
+        path = []
+        current_node = selected_leaf
+        while current_node is not None:
+            path.append(current_node.point)
+            current_node = current_node.parent
+        path.reverse()
+        return path   
+
+class StrategicRRTPathPlanning(BaseRRTPathPlanning):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name = "StrategicRRTPath"
+
+    def select_path(self):
+        leaf_nodes = [node for node in self.tree_nodes if not node.children]
+        leaf_points = np.array([node.point for node in leaf_nodes])
+        _, stds = self.scenario.gp.predict(leaf_points, return_std=True)
+        self.uncertainty_reduction.append(np.mean(stds))
+        max_std_idx = np.argmax(stds)
+        selected_leaf = leaf_nodes[max_std_idx]
+
+        # Trace back to root from the selected leaf
+        path = []
+        current_node = selected_leaf
+        
+        while current_node is not None:
+            path.append(current_node.point)
+            current_node = current_node.parent
+        path.reverse()  # Reverse to start from root
+        return path 
+    

@@ -517,10 +517,10 @@ class InformativeSourceMetricRRTPathPlanning(BaseInformative):
                     self.initialize_tree(path[-1])
                 else:
                     break  # If no path is generated, exit the loop
-
-                if len(self.measurements) % 5 == 0:
-                    self.estimate_sources()
-
+                # evey two budget iterations, estimate sources
+                
+                self.estimate_sources()
+            
             return self.finalize()
         
     def select_path(self):
@@ -577,11 +577,10 @@ class InformativeSourceMetricRRTPathPlanning(BaseInformative):
         for source in self.best_estimates:
             x_k, y_k, intensity = source
             d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
-            radiation_gain += intensity / d_src**2
-            
-            # if there are more than 5 observations close to an estimated source, add a great peanlty to the radiation gain
-            # if np.sum(np.linalg.norm(self.obs_wp - np.array([x_k, y_k]), axis=1) < 1) > 5:
-            #     radiation_gain -= intensity * 1000
+            radiation_gain += intensity / d_src**2  + self.beta_t * d_src
+            # print(f"Radiation gain after beta: {radiation_gain}")
+        if radiation_gain < 0:
+            radiation_gain = 0
 
         return radiation_gain
    

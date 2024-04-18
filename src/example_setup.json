@@ -17,13 +17,13 @@
       },
       {
         "params": {
-          "num_sources": 5,
+          "num_sources": 3,
           "workspace_size": [40, 40]
         }
       },
       {
         "params": {
-          "num_sources": 10,
+          "num_sources": 3,
           "workspace_size": [40, 40]
         }
       }
@@ -31,23 +31,33 @@
     "strategies": [
       "Boustrophedon",
       "InformativePathPlanning",
-      "NaiveRRTPathPlanning",
+      "BaseRRTPathPlanning",
+      "BaseRRTStarPathPlanning",
       "StrategicRRTPathPlanning",
       "BiasRRTPathPlanning",
       "BiasBetaRRTPathPlanning",
       "AdaptiveRRTPathPlanning",
-      "InformativeRRTPathPlanning"
+      "InformativeRRTPathPlanning",
+      "InformativeRRTStarPathPlanning",
+      "InformativeSourceMetricRRTPathPlanning",
+      "InformativeBICPathPlanning",
+      "InformativeBetaBICPathPlanning",
+      "MultiAgentInformativeSourceMetricRRTPathPlanning"
     ],
     "args": {
       "rounds": 1,
-      "beta_t": 1.0,
-      "save": false,
-      "show": true,
-      "seed": 95789,
+      "beta_t": 50.0,
+      "save": true,
+      "show": false,
+      "seed": 69,
       "budget": 375,
-      "d_waypoint_distance": 2.5,
+      "d_waypoint_distance": 5,
       "budget_iter": 10,
-      "run_number": -1
+      "run_number": -1,
+      "lambda_b": 1,
+      "max_sources": 3,
+      "n_samples": 1000,
+      "s_stages": 25
     }
   }
   

@@ -68,7 +68,7 @@ def plot_path(path, ax, color='red', linewidth=2):
     - linewidth: The width of the path line. Default is 2.
     """
     x, y = path
-    ax.plot(x, y, color=color, linewidth=linewidth)
+    ax.plot(x, y, color='blue', linewidth=linewidth)
 
 def run_number_from_folder():
     """
@@ -133,8 +133,17 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
     fig.colorbar(cs_pred, ax=axs[0, 1], format=ticker.LogFormatterMathtext())
     axs[0, 1].set_title('Predicted Field')
     x_new, y_new = path.full_path
-    axs[0, 1].plot(x_new, y_new, 'b-', label=path.name + ' Path')
-    axs[0, 1].plot(path.obs_wp[:, 0], path.obs_wp[:, 1], 'ro', markersize=5)  # Waypoints
+    if hasattr(path, 'num_agents'):
+        # plot each with a different color except for green
+        # blue, cyan, magenta, yellow, black, white
+        colors_path = ['b', 'c', 'm', 'y', 'k', 'w']
+        for i in range(path.num_agents):
+            current_x, current_y = np.array(path.agents_full_path[i]).reshape(-1, 2).T
+            axs[0, 1].plot(current_x, current_y, label=f'Agent {i+1} Path', linewidth=1, color=colors_path[i])
+    else:
+        axs[0, 1].plot(x_new, y_new, 'b-', label=path.name + ' Path', linewidth=2)
+    
+    axs[0, 1].plot(path.obs_wp[:, 0], path.obs_wp[:, 1], 'ro', markersize=0.5)  # Waypoints
     for source in scenario.sources:
         axs[0, 1].plot(source[0], source[1], 'rX', markersize=10, label='Source')
     # plot the sources estimated of the last run
@@ -177,7 +186,14 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
         # Plot all trees and the final chosen path
         for tree_root in path.trees:
             plot_tree_node(tree_root, axs[0], color='lightgray')
-        plot_path(path.full_path, axs[0], color='red', linewidth=3)
+        # is has attribute num_agents, plot each agent path with a different color
+        if hasattr(path, 'num_agents'):
+            for i in range(path.num_agents):
+                current_x, current_y = np.array(path.agents_full_path[i]).reshape(-1, 2).T
+                axs[0].plot(current_x, current_y, label=f'Agent {i+1} Path', linewidth=1, color=colors_path[i])
+        else:
+            plot_path(path.full_path, axs[0])        
+
         axs[0].set_title('Final Path with All Trees')
         axs[0].set_xlim(0, scenario.workspace_size[0])
         axs[0].set_ylim(0, scenario.workspace_size[1])

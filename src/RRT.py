@@ -375,11 +375,12 @@ class InformativeSourceMetricRRTPathPlanning(BaseInformative):
                     break
 
         self.trees.add(self.root)
-    def steer(self, nearest_node, target_point):
+    
+    def steer(self, nearest_node, target_point, step_size=1.0):
         direction = target_point - nearest_node.point
         distance = np.linalg.norm(direction)
         direction /= max(distance, 1e-8)  # Avoid division by zero
-        new_point = nearest_node.point + direction * min(distance, self.d_waypoint_distance)
+        new_point = nearest_node.point + direction * min(distance, step_size)
         return InformativeTreeNode(new_point)
 
     def nearest(self, target_point):
@@ -448,8 +449,7 @@ class InformativeSourceMetricRRTPathPlanning(BaseInformative):
                     self.initialize_tree(path[-1])
                 else:
                     break  # If no path is generated, exit the loop
-                # evey two budget iterations, estimate sources
-                
+                # evey 3 budget iterations, estimate sources
                 self.estimate_sources()
             
             return self.finalize()
@@ -465,7 +465,6 @@ class InformativeSourceMetricRRTPathPlanning(BaseInformative):
         else:
             return []
     
-
     def select_leaf_based_on_gain(self, leaf_nodes):
         if self.best_estimates.size == 0:
             return np.random.choice(leaf_nodes)
@@ -503,86 +502,256 @@ class InformativeSourceMetricRRTPathPlanning(BaseInformative):
         return Z_pred, std
 
     def radiation_gain(self, node):
-        x_t, y_t = node.point
-        radiation_gain = 0
-        for source in self.best_estimates:
-            x_k, y_k, intensity = source
-            d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
-            radiation_gain += intensity / d_src**2  + self.beta_t * d_src
-            # print(f"Radiation gain after beta: {radiation_gain}")
-        if radiation_gain < 0:
+        # Gain_nodet = Gain_nodet-1 + Gain_nodet_src
+        def sources_gain(node):
+            x_t, y_t = node.point
             radiation_gain = 0
+            for source in self.best_estimates:
+                x_k, y_k, intensity = source
+                d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
+                radiation_gain += intensity / d_src**2
+            suprresion_gain = 0
+            # for source k 
+            # F_src(t,k) (node_t) = sum_i,j!=k ^N_sources (1- C_sup^dist + (C_sup^dist)/(1+exp[(T_sup^dist-d_t(k,j))/(S_sup^dist)]))
+            # where the d_t(k,j) is the distance between the node_t and midpoint of the kth and jth sources (second norm)
+            # C_k^pos and C_j^pos used in distance calculation are the positions of the sources
+            # T_sup^dist and S_sup^dist are the threshold and slope parameters
+            # C_sup^dist is the suppression constant (lets assume 1 for now)
+            for j in range(len(self.best_estimates)):
+                for k in range(len(self.best_estimates)):
+                    if j != k:
+                        x_j, y_j, _ = self.best_estimates[j]
+                        x_k, y_k, _ = self.best_estimates[k]
+                        d_t_k_j = np.linalg.norm([x_t - (x_j + x_k)/2, y_t - (y_j + y_k)/2])
+                        suprresion_gain += 1 - 1/(1+np.exp((d_t_k_j - 1)/1))
+                        
+            return radiation_gain * suprresion_gain
+        final_gain = 0
+        current_node = node
+        while current_node.parent:
+            final_gain += sources_gain(current_node)
+            current_node = current_node.parent
+        return final_gain
+
+        # x_t, y_t = node.point
+        # radiation_gain = 0
+        # for source in self.best_estimates:
+        #     x_k, y_k, intensity = source
+        #     d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
+        #     radiation_gain += intensity / d_src**2  + self.beta_t * d_src
+        #     # print(f"Radiation gain after beta: {radiation_gain}")
+        # if radiation_gain < 0:
+        #     radiation_gain = 0
+
+        return radiation_gain
+   
+class InformativeSourceMetricRRTStartPathPlanning(BaseRRTStarPathPlanning):# F_
+    def __init__(self, *args, budget_iter=10, lambda_b=1, max_sources=1, n_samples=20, s_stages=5, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.budget_iterations = budget_iter
+        self.lambda_b = lambda_b
+        self.max_sources = max_sources
+        self.n_samples = n_samples
+        self.s_stages = s_stages
+        self.best_estimates = np.array([])
+        self.best_bic = -np.inf
+        self.name = "InformativeSourceMetricRRTStartPath"
+        self.measurements = []
+        self.full_path = []
+        self.trees = TreeCollection()
+        self.uncertainty_reduction = []
+        
+    def run(self):
+        budget_portion = self.budget / self.budget_iterations
+        # Initialize with the starting position
+        start_position = np.array([0.5, 0.5])
+        self.initialize_tree(start_position)
+        with tqdm(total=self.budget, desc="Running " + self.name) as pbar:
+            while self.budget > 0:
+                self.generate_tree(budget_portion)
+                path = self.select_path()
+                # print(f"Path: {path}")
+                budget_spent = 0
+                for i in range(1, len(path)):
+                    budget_spent += np.linalg.norm(path[i] - path[i-1])
+                self.update_observations_and_model(path)
+                self.full_path.extend(path)
+                self.budget -= budget_spent
+                pbar.update(budget_spent)
+                #print(f"Remaining budget: {self.budget}")
+                if path:
+                    # Reinitialize tree at the last point of the current path
+                    self.initialize_tree(path[-1])
+                else:
+                    break  # If no path is generated, exit the loop
+                # evey two budget iterations, estimate sources
+                
+                self.estimate_sources()
+            
+            return self.finalize()
+        
+    def select_path(self):
+        leaf_nodes = [node for node in self.tree_nodes if not node.children]
+        leaf_points = np.array([node.point for node in leaf_nodes])
+        
+        # select using the best gain 
+        if self.best_estimates.size == 0:
+            selected_leaf = np.random.choice(leaf_nodes)
+        else:
+            radiation_gains = [self.radiation_gain(node) for node in leaf_nodes]
+            selected_leaf = leaf_nodes[np.argmax(radiation_gains)]
+
+        # Trace back to root from the selected leaf
+        path = []
+        path = self.trace_path_to_root(selected_leaf)
+        return path
+
+
+    def trace_path_to_root(self, selected_leaf):
+        path = []
+        current_node = selected_leaf
+        while current_node:
+            path.append(current_node.point)
+            current_node = current_node.parent
+        path.reverse()
+        return path
+
+    def update_observations_and_model(self, path):
+        for point in path:
+            self.obs_wp.append(point)
+            measurement = self.scenario.simulate_measurements([point])[0]
+            self.measurements.append(measurement)
+
+    def estimate_sources(self):
+        estimates, _, bic = estimate_sources_bayesian(
+            self.full_path, self.measurements, self.lambda_b,
+            self.max_sources, self.n_samples, self.s_stages
+        )
+        if bic > self.best_bic:
+            self.best_bic = bic
+            self.best_estimates = estimates.reshape((-1, 3))
+
+    def finalize(self):
+        self.obs_wp = np.array(self.obs_wp)
+        self.full_path = np.array(self.obs_wp).reshape(-1, 2).T
+        Z_pred, std = self.scenario.predict_spatial_field(self.obs_wp , np.array(self.measurements))
+        return Z_pred, std
+
+    def radiation_gain(self, node):
+        # Gain_nodet = Gain_nodet-1 + Gain_nodet_src
+        def sources_gain(node):
+            x_t, y_t = node.point
+            radiation_gain = 0
+            for source in self.best_estimates:
+                x_k, y_k, intensity = source
+                d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
+                radiation_gain += intensity / d_src**2
+            return radiation_gain
+        # give a severe penalty to a node that is within 5m of an observation point of the other agent
+        # if node in self.agents_obs_wp[0]:
+
+        final_gain = 0
+        current_node = node
+        while current_node.parent:
+            final_gain += sources_gain(current_node)
+            current_node = current_node.parent
+        return final_gain
+
+        # x_t, y_t = node.point
+        # radiation_gain = 0
+        # for source in self.best_estimates:
+        #     x_k, y_k, intensity = source
+        #     d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
+        #     radiation_gain += intensity / d_src**2  + self.beta_t * d_src
+        #     # print(f"Radiation gain after beta: {radiation_gain}")
+        # if radiation_gain < 0:
+        #     radiation_gain = 0
 
         return radiation_gain
    
 class MultiAgentInformativeSourceMetricRRTPathPlanning(InformativeSourceMetricRRTPathPlanning):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, num_agents=2, **kwargs):
         super().__init__(*args, **kwargs)
-        self.agent_positions = [np.array([0.5, 0.5]), np.array([39.5, 39.5])]  # Start positions for each agent
-        self.agents_trees = [TreeCollection(), TreeCollection()]  # Tree collections for each agent
-        self.agents_obs_wp = [[], []]  # Observation waypoint lists for each agent
-        self.agents_measurements = [[], []]  # Measurements for each agent
-        self.agents_full_path = [[], []]  # Path lists for each agent
-        self.tree_nodes = [[], []]  # Tree nodes for each agent
+        self.num_agents = num_agents
+        self.individual_budgets = [self.budget] * num_agents  # Can be a list if different budgets per agent
+        self.agent_positions = [np.array([0.5 + i * (self.scenario.workspace_size[0] - 1) / (num_agents - 1), 0.5]) for i in range(num_agents)]
+        self.agents_trees = [TreeCollection() for _ in range(num_agents)]
+        self.agents_obs_wp = [[] for _ in range(num_agents)]
+        self.agents_measurements = [[] for _ in range(num_agents)]
+        self.agents_full_path = [[] for _ in range(num_agents)]
+        self.tree_nodes = [[] for _ in range(num_agents)]
+        self.name = "MultiAgentInformativeSourceMetricRRTPath"
 
-    def initialize_trees(self):
-        for i, position in enumerate(self.agent_positions):
-            root = TreeNode(position)
-            self.agents_trees[i] = TreeCollection()
-            self.agents_trees[i].add(root)
-            self.tree_nodes[i] = [root]
+    def initialize_trees(self, start_position, agent_idx):
+        self.root = InformativeTreeNode(start_position)
+        self.trees.add(self.root)
+        self.current_position = start_position
+        self.tree_nodes[agent_idx] = [self.root]
 
     def run(self):
-        self.initialize_trees()
-        local_bic = -np.inf
-        budget_portion = self.budget / self.budget_iterations
-        with tqdm(total=self.budget, desc="Running Multi-Agent " + self.name) as pbar:
-            while self.budget > 0:
-                paths_this_iteration = []
-                for i in range(len(self.agent_positions)):
-                    self.current_position = self.agent_positions[i]
-                    self.obs_wp = self.agents_obs_wp[i]
-                    self.full_path = self.agents_full_path[i]
-
-                    self.generate_rig_tree(self.budget / len(self.agent_positions), i)
-                    path = self.select_path(i)
-                    if path:
+        budget_portion = [budget / self.budget_iterations for budget in self.individual_budgets]
+        for i in range(self.num_agents):
+            self.initialize_trees(self.agent_positions[i], i)
+        with tqdm(total=sum(self.individual_budgets), desc="Running Multi-Agent " + self.name) as pbar:
+            while any(b > 0 for b in self.individual_budgets):
+                for i in range(self.num_agents):
+                    if self.individual_budgets[i] > 0:
+                        self.generate_rig_tree(budget_portion[i], i)
+                        path = self.select_path(i)
+                        budget_spent = self.calculate_budget_spent(path)
                         self.update_observations_and_model(path, i)
                         self.agents_full_path[i].extend(path)
-                        self.agent_positions[i] = path[-1]  # Update last known position
-                        paths_this_iteration.append(path)
-                    else:
-                        paths_this_iteration.append([])
+                        self.individual_budgets[i] -= budget_spent
+                        pbar.update(budget_spent)
+                        if path:
+                            self.initialize_trees(path[-1], i)
+                print(f"Remaining budgets: {self.individual_budgets}")
+                self.estimate_sources()
 
-                # Calculate budget spent for this iteration
-                budget_spent = sum(self.calculate_budget_spent(path) for path in paths_this_iteration)
-                pbar.update(budget_spent)
-                self.budget -= budget_portion
+        return self.finalize_all_agents()
 
-                # Combine observations and measurements for source estimation
-                combined_measurements = np.concatenate([np.array(meas) for meas in self.agents_measurements], axis=0)
-                combined_wp = np.concatenate([np.array(wp) for wp in self.agents_obs_wp], axis=0)
-                if combined_measurements.size > 0:
-                    estimates, _, bic = estimate_sources_bayesian(
-                        combined_wp, combined_measurements, self.lambda_b,
-                        self.max_sources, self.n_samples, self.s_stages
-                    )
-                    if bic > local_bic:
-                        local_bic = bic
-                        if bic > self.best_bic:
-                            self.best_bic = bic
-                            self.best_estimates = estimates.reshape((-1, 3))
-                            # print("\nBest estimates updated: ", estimates, "\n")
-
-                if self.budget <= 0:
-                    break
-
-        self.obs_wp = np.array(combined_wp)
-        self.full_path = np.array([path for sublist in self.agents_full_path for path in sublist]).reshape(-1, 2).T
-        self.measurements = np.concatenate([np.array(meas) for meas in self.agents_measurements], axis=0)
-        Z_pred, std = self.scenario.predict_spatial_field(combined_wp, combined_measurements)
+    def finalize_all_agents(self):
+        combined_measurements = sum((agent_measurements for agent_measurements in self.agents_measurements), [])
+        combined_obs_wp = sum((agent_wp for agent_wp in self.agents_obs_wp), [])
+        combined_full_path = sum((agent_path for agent_path in self.agents_full_path), [])
+        # print("Finalizing all agents")
+        # print(f"Combined measurements: {combined_measurements}")
+        # print(f"Combined obs_wp: {combined_obs_wp}")
+        # print(f"Combined full_path: {combined_full_path}")
+        return self.finalize(combined_measurements, combined_obs_wp, combined_full_path)
+    
+    def finalize(self, measurements, obs_wp, full_path):
+        self.measurements = measurements
+        self.obs_wp = np.array(obs_wp)
+        self.full_path = np.array(full_path).reshape(-1, 2).T
+        Z_pred, std = self.scenario.predict_spatial_field(self.obs_wp , np.array(self.measurements))
+        print(self.trees)
         return Z_pred, std
-
+    
+    def radiation_gain(self, node, agent_idx):
+        # Gain_nodet = Gain_nodet-1 + Gain_nodet_src
+        def sources_gain(node):
+            x_t, y_t = node.point
+            radiation_gain = 0
+            for source in self.best_estimates:
+                x_k, y_k, intensity = source
+                d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
+                radiation_gain += intensity / d_src**2
+            return radiation_gain
+        # If there are already obs_wp for the other agents, give a severe penalty to the node that is within 5m of the observation point of the other agent
+        for i in range(self.num_agents):
+            if i != agent_idx:
+                for obs_point in self.agents_obs_wp[i]:
+                    if np.linalg.norm(node.point - obs_point) < 5:
+                        return -np.inf
+        
+        final_gain = 0
+        current_node = node
+        while current_node.parent:
+            final_gain += sources_gain(current_node)
+            current_node = current_node.parent
+        return final_gain
+    
     def calculate_budget_spent(self, path):
         if not path:
             return 0
@@ -594,27 +763,40 @@ class MultiAgentInformativeSourceMetricRRTPathPlanning(InformativeSourceMetricRR
     def generate_rig_tree(self, budget_portion, agent_idx):
         distance_travelled = 0
         while distance_travelled < budget_portion:
-            x_rand = self.sample_free()
-            x_nearest = self.nearest(x_rand, agent_idx)
-            x_new = self.steer(x_nearest, x_rand)
-            if self.obstacle_free(x_nearest, x_new):
-                X_near = self.near(x_new, agent_idx)
-                c_min = self.cost(x_nearest, agent_idx) + self.line_cost(x_nearest, x_new)
-                x_min = x_nearest
-                for x_near in X_near:
-                    if self.obstacle_free(x_near, x_new) and self.cost(x_near, agent_idx) + self.line_cost(x_near, x_new) < c_min:
-                        c_min = self.cost(x_near, agent_idx) + self.line_cost(x_near, x_new)
-                        x_min = x_near
-                self.add_node(x_new, x_min, agent_idx)
-                distance_travelled += np.linalg.norm(x_new.point - x_min.point)
-                for x_near in X_near:
-                    if self.obstacle_free(x_new, x_near) and self.cost(x_new, agent_idx) + self.line_cost(x_new, x_near) < self.cost(x_near, agent_idx):
-                        self.rewire(x_near, x_new, agent_idx)
+            random_point = np.random.rand(2) * self.scenario.workspace_size
+            nearest_node = self.nearest(random_point, agent_idx)
+            new_node = self.steer(nearest_node, random_point)
+
+            if self.obstacle_free(nearest_node.point, new_node.point):
+                X_near = self.near(new_node, agent_idx)
+                new_node = self.choose_parent(X_near, nearest_node, new_node, agent_idx)
+                nearest_node.children.append(new_node)
+                self.tree_nodes[agent_idx].append(new_node)
+                distance_travelled += np.linalg.norm(new_node.point - nearest_node.point)
+                
+                # Update the information gain for the new node
+                new_node.information = self.radiation_gain(new_node, agent_idx)
+
+                self.rewire(X_near, new_node, agent_idx)
                 if distance_travelled >= budget_portion:
                     break
-        self.agents_trees[agent_idx].add(self.tree_nodes[agent_idx][0])
-        self.trees.add(self.tree_nodes[agent_idx][0])
 
+        self.agents_trees[agent_idx].add(self.root)
+
+    def choose_parent(self, X_near, x_nearest, x_new, agent_idx):
+        c_min = self.cost(x_nearest, agent_idx) + self.line_cost(x_nearest, x_new)
+        x_min = x_nearest
+
+        for x_near in X_near:
+            if self.obstacle_free(x_near.point, x_new.point) and \
+                    self.cost(x_near, agent_idx) + self.line_cost(x_near, x_new) < c_min and \
+                    self.radiation_gain(x_near, agent_idx) > 0:
+                c_min = self.cost(x_near, agent_idx) + self.line_cost(x_near, x_new)
+                x_min = x_near
+
+        x_new.parent = x_min
+        return x_new
+    
     def steer(self, x_nearest, x_rand, step_size=1.0):
         direction = x_rand - x_nearest.point
         distance = np.linalg.norm(direction)
@@ -634,10 +816,11 @@ class MultiAgentInformativeSourceMetricRRTPathPlanning(InformativeSourceMetricRR
         self.tree_nodes[agent_idx].append(x_new)
 
     def rewire(self, x_near, x_new, agent_idx):
-        x_near.parent.children.remove(x_near)
-        x_near.parent = x_new
-        x_new.children.append(x_near)
-
+        for x_near in x_near:
+            if self.obstacle_free(x_new.point, x_near.point) and \
+                    self.cost(x_new, agent_idx) + self.line_cost(x_new, x_near) < self.cost(x_near, agent_idx):
+                x_near.parent = x_new
+    
     def obstacle_free(self, x1, x2):
         # Add your actual obstacle check logic here
         return True
@@ -667,9 +850,8 @@ class MultiAgentInformativeSourceMetricRRTPathPlanning(InformativeSourceMetricRR
         if self.best_estimates.size == 0:
             selected_leaf = np.random.choice(leaf_nodes)  # Random selection if no estimates are available
         else:
-            # Calculate radiation gains for each leaf node
-            radiation_gains = [self.radiation_gain(node) for node in leaf_nodes]
-            selected_leaf = leaf_nodes[np.argmax(radiation_gains)]
+            # use node.information as the key for selection
+            selected_leaf = max(leaf_nodes, key=lambda node: node.information)
 
         # Trace the path from the selected leaf back to the root
         return self.trace_path_to_root(selected_leaf)
@@ -688,7 +870,6 @@ class MultiAgentInformativeSourceMetricRRTPathPlanning(InformativeSourceMetricRR
             measurement = self.scenario.simulate_measurements([point])[0]
             self.agents_measurements[agent_idx].append(measurement)
             self.agents_obs_wp[agent_idx].append(point)
-
 
     def combine_observations_and_paths(self):
         self.obs_wp = [wp for sublist in self.agents_obs_wp for wp in sublist]

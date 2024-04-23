@@ -4,45 +4,6 @@ import numpy as np
 import os 
 from scipy.stats import poisson, uniform, norm
 
-class TreeNode:
-    """Represents a node in a tree structure."""
-    def __init__(self, point, parent=None, cost=0):
-        """
-        Initializes a new instance of the TreeNode class.
-        
-        Parameters:
-        - point: The (x, y) coordinates of the node.
-        - parent: The parent TreeNode. Default is None.
-        """
-        self.point = point
-        self.parent = parent
-        self.children = []
-        self.cost = cost
-
-    def add_child(self, child):
-        """Adds a child node to this node."""
-        self.children.append(child)
-        child.parent = self
-
-class TreeCollection:
-    """Represents a collection of trees."""
-    def __init__(self):
-        """Initializes a new instance of the TreeCollection class."""
-        self.trees = []
-
-    def add(self, tree):
-        """Adds a tree to the collection."""
-        self.trees.append(tree)
-
-    def __iter__(self):
-        return iter(self.trees)
-
-    def __getitem__(self, idx):
-        return self.trees[idx]
-
-    def __len__(self):
-        return len(self.trees)
-
 def plot_tree_node(node, ax, color='blue'):
     """
     Recursively plots each node in the tree.
@@ -107,10 +68,10 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
     folder = f'images/{run_number}'
     if not os.path.exists(f'../{folder}'):
         os.makedirs(f'../{folder}')
-    save_fig_title = f'../{folder}/run_{rounds}_scenario_{scenario_number}_path_{path.name}.png'
+    save_fig_title = f'../{folder}/run_{rounds}_scenario_{scenario_number}_path_{path.name}_num_agents_{path.num_agents}.png'
     if hasattr(path, 'beta_t'):
         strategy_title += f' - Beta_t: {path.beta_t}'
-        save_fig_title = f'../{folder}/run_{rounds}_scenario_{scenario_number}_path_{path.name}_beta_{path.beta_t}.png'
+        save_fig_title = f'../{folder}/run_{rounds}_scenario_{scenario_number}_path_{path.name}_num_agents_{path.num_agents}_beta_{path.beta_t}.png'
     
     # Determine the levels for log scale based on z_true
     max_log_value = np.ceil(np.log10(z_true.max())) if z_true.max() != 0 else 1
@@ -141,9 +102,9 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
             current_x, current_y = np.array(path.agents_full_path[i]).reshape(-1, 2).T
             axs[0, 1].plot(current_x, current_y, label=f'Agent {i+1} Path', linewidth=1, color=colors_path[i])
     else:
-        axs[0, 1].plot(x_new, y_new, 'b-', label=path.name + ' Path', linewidth=2)
+        axs[0, 1].plot(x_new, y_new, 'b-', label=path.name + ' Path', linewidth=1)
     
-    axs[0, 1].plot(path.obs_wp[:, 0], path.obs_wp[:, 1], 'ro', markersize=0.5)  # Waypoints
+    axs[0, 1].plot(path.obs_wp[:, 0], path.obs_wp[:, 1], 'ro', markersize=1)  # Waypoints
     for source in scenario.sources:
         axs[0, 1].plot(source[0], source[1], 'rX', markersize=10, label='Source')
     # plot the sources estimated of the last run
@@ -180,6 +141,9 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
 
     # Additional RRT-specific plots
     if "RRT" in path.name:
+        rrt_helper_plot(save_fig_title, strategy_title, scenario, path, colors_path, save=save, show=show)
+
+def rrt_helper_plot(save_fig_title, strategy_title, scenario, path, colors_path, save=False, show=False):
         fig, axs = plt.subplots(1, 2, figsize=(20, 6))
         fig.suptitle(f'Additional Insights for {strategy_title}', fontsize=16)
 
@@ -369,7 +333,7 @@ def source_distance(scenario, source_list, save_fig_title=None, show=False):
     source_ids = [f"Source {i+1}" for i in range(len(scenario.sources))]
 
     for idx, (errors, label) in enumerate(zip([x_errors, y_errors, intensity_errors], ['X Error', 'Y Error', 'Intensity Error'])):
-        averages = [np.nanmean(e) for e in errors]
+        averages = [np.nanmean(e) for e in errors] if errors else []
         std_devs = [np.nanstd(e) for e in errors]
         ax[idx].bar(source_ids, averages, yerr=std_devs, alpha=0.6, color='b', label=label)
         ax[idx].set_ylabel('Error')

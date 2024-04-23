@@ -54,7 +54,7 @@ def rrt_star_tree_generation(self, budget_portion, agent_idx):
         if obstacle_free(x_nearest, x_new):
             x_new = InformativeTreeNode(x_new)
             X_near = near(x_new, self.tree_nodes[agent_idx], self.d_waypoint_distance)
-            M
+            
             # Initialize the minimum cost and the best parent node for x_new
             c_min = cost(x_nearest) + line_cost(x_nearest, x_new)
             x_min = x_nearest
@@ -260,6 +260,8 @@ def point_source_gain(self, node, agent_idx):
         final_gain += sources_gain(current_node)
         current_node = current_node.parent
     return final_gain
+
+
 
 # Create a generic RRT Class with to be implemented methods and the overall structure and main loop of the algorithm
 class InformativeRRTBaseClass():

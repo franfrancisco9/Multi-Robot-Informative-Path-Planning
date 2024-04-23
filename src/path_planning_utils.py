@@ -68,10 +68,13 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
     folder = f'images/{run_number}'
     if not os.path.exists(f'../{folder}'):
         os.makedirs(f'../{folder}')
-    save_fig_title = f'../{folder}/run_{rounds}_scenario_{scenario_number}_path_{path.name}_num_agents_{path.num_agents}.png'
+    save_fig_title = f'../{folder}/run_{rounds}_scenario_{scenario_number}_path_{path.name}.png'
     if hasattr(path, 'beta_t'):
         strategy_title += f' - Beta_t: {path.beta_t}'
-        save_fig_title = f'../{folder}/run_{rounds}_scenario_{scenario_number}_path_{path.name}_num_agents_{path.num_agents}_beta_{path.beta_t}.png'
+        save_fig_title = save_fig_title.replace('.png', f'_beta_{path.beta_t}.png')
+    if hasattr(path, 'num_agents'):
+        strategy_title += f' - Agents: {path.num_agents}'
+        save_fig_title = save_fig_title.replace('.png', f'_agents_{path.num_agents}.png')
     
     # Determine the levels for log scale based on z_true
     max_log_value = np.ceil(np.log10(z_true.max())) if z_true.max() != 0 else 1

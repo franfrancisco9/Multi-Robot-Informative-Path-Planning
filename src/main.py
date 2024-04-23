@@ -97,6 +97,7 @@ def run_simulations(scenarios, strategy_instances, args):
     print(f"Run number: {run_number}")
     RMSE_per_scenario = {}
     Diff_Entropy_per_scenario = {}
+    TIME_per_scenario = {}
     Source_per_scenario = {}
 
     with tqdm(total=args["rounds"] * len(scenarios) * len(strategy_instances), desc="Overall Progress") as pbar:
@@ -105,6 +106,7 @@ def run_simulations(scenarios, strategy_instances, args):
             # Temporary storage for the current scenario's RMSE and differential entropy
             RMSE_lists = {strategy_name: [] for strategy_name in strategy_instances}
             Diff_Entropy_lists = {strategy_name: [] for strategy_name in strategy_instances}
+            TIME_lists = {strategy_name: [] for strategy_name in strategy_instances}
             Source_lists = {strategy_name: {'source':[], 'n_sources': []} for strategy_name in strategy_instances}
             for round_number in range(1, args["rounds"] + 1):
                 for strategy_name, constructor in strategy_instances.items():
@@ -114,6 +116,7 @@ def run_simulations(scenarios, strategy_instances, args):
                     Z_true = scenario.ground_truth()
                     RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
                     Diff_Entropy = calculate_differential_entropy(std)
+                    TIME = strategy.time_taken if hasattr(strategy, 'time_taken') else None
                     # Obtain the estimated locations, number of sources, and theta samples
                     estimated_locs, estimated_num_sources, _ = estimate_sources_bayesian(
                         strategy.obs_wp, strategy.measurements, 
@@ -123,15 +126,13 @@ def run_simulations(scenarios, strategy_instances, args):
                         s_stages=args["s_stages"]
                     )
                     estimated_locs = np.array(estimated_locs).reshape(-1, 3)
-                    print(f"Estimated number of sources: {estimated_num_sources}")
-                    print(f"Estimated locations: {estimated_locs}")
                     Source_lists[strategy_name]['source'].append(estimated_locs)
-                    print(f"Source list: {Source_lists[strategy_name]['source']}")
                     Source_lists[strategy_name]['n_sources'].append(estimated_num_sources)
                     
                     tqdm.write(f"{strategy_name} RMSE: {RMSE}")
                     RMSE_lists[strategy_name].append(RMSE)
                     Diff_Entropy_lists[strategy_name].append(Diff_Entropy)
+                    TIME_lists[strategy_name].append(TIME)
                     if round_number == args["rounds"]:
                         helper_plot(scenario, scenario_idx, Z_true, Z_pred, std, strategy, RMSE_lists[strategy_name], Source_lists[strategy_name], 
                                     args["rounds"], run_number, save=args["save"], show=args["show"])
@@ -139,9 +140,10 @@ def run_simulations(scenarios, strategy_instances, args):
             RMSE_per_scenario[f"Scenario_{scenario_idx}"] = RMSE_lists
             Diff_Entropy_per_scenario[f"Scenario_{scenario_idx}"] = Diff_Entropy_lists
             Source_per_scenario[f"Scenario_{scenario_idx}"] = Source_lists
+            TIME_per_scenario[f"Scenario_{scenario_idx}"] = TIME_lists
 
     # Save run information after processing all scenarios
-    save_run_info(run_number, RMSE_per_scenario, Diff_Entropy_per_scenario, Source_per_scenario, args, scenarios)
+    save_run_info(run_number, RMSE_per_scenario, Diff_Entropy_per_scenario, Source_per_scenario, TIME_per_scenario, args, scenarios)
 
 def main():
     parser = argparse.ArgumentParser(description="Run path planning scenarios.")

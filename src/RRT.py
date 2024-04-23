@@ -1,4 +1,5 @@
 import numpy as np
+import time
 from scipy.spatial import KDTree
 from scipy.stats import uniform
 from informative import BaseInformative
@@ -280,6 +281,7 @@ class InformativeRRTBaseClass():
         self.name = None
         self.trees = TreeCollection()
         self.uncertainty_reduction = []
+        self.time_taken = 0
 
         # Source Metric Parameters
         self.n_samples = n_samples
@@ -311,6 +313,7 @@ class InformativeRRTBaseClass():
         budget_portion = [budget / self.budget_iter for budget in self.budget]
         for i in range(self.num_agents):
             self.initialize_trees(self.agent_positions[i], i)
+        start_time = time.time()
         with tqdm(total=sum(self.budget), desc="Running " + str(self.num_agents) + " Agent " + self.name) as pbar:
             while any(b > 0 for b in self.budget):
                 for i in range(self.num_agents):
@@ -325,7 +328,7 @@ class InformativeRRTBaseClass():
                         if path:
                             self.initialize_trees(path[-1], i)
                 self.information_update()
-
+        self.time_taken = time.time() - start_time
         return self.finalize_all_agents()
     
     def update_observations_and_model(self, path, agent_idx):
@@ -414,7 +417,6 @@ class RRT_BiasBetaInformative_GP_PathPlanning(InformativeRRTBaseClass):
 
     def path_selection(self, agent_idx):
         return bias_beta_path_selection(self, agent_idx)
-
 
     def tree_generation(self, budget_portion, agent_idx):
         rrt_tree_generation(self, budget_portion, agent_idx)

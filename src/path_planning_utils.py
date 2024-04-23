@@ -3,6 +3,9 @@ from matplotlib import ticker, colors
 import numpy as np
 import os 
 from scipy.stats import poisson, uniform, norm
+import warnings
+# Ignore for nanmean.
+warnings.simplefilter("ignore", category=RuntimeWarning)
 
 def plot_tree_node(node, ax, color='blue'):
     """
@@ -222,7 +225,7 @@ def distance_histogram(scenario, obs_wp, save_fig_title=None, show=False):
     if show:
         plt.show()
 
-def save_run_info(run_number, rmse_per_scenario, entropy_per_scenario, source_per_scenario, args, scenario_classes, folder_path="../runs_review"):
+def save_run_info(run_number, rmse_per_scenario, entropy_per_scenario, source_per_scenario, time_per_scenario, args, scenario_classes, folder_path="../runs_review"):
     os.makedirs(folder_path, exist_ok=True)
     filename = os.path.join(folder_path, f"run_{run_number}.txt")
 
@@ -276,6 +279,14 @@ def save_run_info(run_number, rmse_per_scenario, entropy_per_scenario, source_pe
                 for strategy, entropies in entropy_per_scenario[scenario_key].items():
                     avg_entropy = np.mean(entropies)
                     f.write(f"\t\t{strategy}: Avg Entropy = {avg_entropy:.4f}, Rounds = {len(entropies)}\n")
+
+            f.write("\tTime Taken:\n")
+            if scenario_key in time_per_scenario:
+                for strategy, times in time_per_scenario[scenario_key].items():
+                    # if there are None values in the times list, ignore them
+                    times = [t for t in times if t is not None]
+                    avg_time = np.mean(times)
+                    f.write(f"\t\t{strategy}: Avg Time = {avg_time:.4f}, Rounds = {len(times)}\n")
             
             f.write("\tSource Information:\n")
             if scenario_key in source_per_scenario:
@@ -292,6 +303,8 @@ def save_run_info(run_number, rmse_per_scenario, entropy_per_scenario, source_pe
                         f.write(f"\t\tCorrect number of sources predicted in last round: {correct_number}\n")
             f.write(f"\tActual sources (x, y, intensity):\n")
             f.write(f"\t\t{actual_sources.tolist()}\n")
+
+            
 
     
     print(f"Run information saved to {filename}")
@@ -336,7 +349,7 @@ def source_distance(scenario, source_list, save_fig_title=None, show=False):
     source_ids = [f"Source {i+1}" for i in range(len(scenario.sources))]
 
     for idx, (errors, label) in enumerate(zip([x_errors, y_errors, intensity_errors], ['X Error', 'Y Error', 'Intensity Error'])):
-        averages = [np.nanmean(e) for e in errors] if errors else []
+        averages = [np.nanmean(e) for e in errors]
         std_devs = [np.nanstd(e) for e in errors]
         ax[idx].bar(source_ids, averages, yerr=std_devs, alpha=0.6, color='b', label=label)
         ax[idx].set_ylabel('Error')

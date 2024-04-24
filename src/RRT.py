@@ -177,12 +177,8 @@ def rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_sou
             
             # Update the information gain for the new node
             new_node.information = gain_function(self, new_node, agent_idx)
-            # check if it should be pruned
-            if new_node.information <= 0:
-                self.tree_nodes[agent_idx].remove(new_node)
-            else:
-                # Rewire the tree
-                rewire(X_near, new_node)
+
+            rewire(X_near, new_node)
             if distance_travelled >= budget_portion:
                 break
 
@@ -352,6 +348,7 @@ class InformativeRRTBaseClass():
         Generic run method for the Informative RRT Path Planning algorithm
         """
         budget_portion = [budget / self.budget_iter for budget in self.budget]
+
         for i in range(self.num_agents):
             self.initialize_trees(self.agent_positions[i], i)
         start_time = time.time()

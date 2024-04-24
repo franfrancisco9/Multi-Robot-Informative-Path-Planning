@@ -166,7 +166,7 @@ def rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_sou
     while distance_travelled < budget_portion:
         random_point = np.random.rand(2) * self.scenario.workspace_size
         nearest_node = nearest(self.tree_nodes[agent_idx], random_point)
-        new_point = steer(nearest_node, random_point, d_max_step=1.0)
+        new_point = steer(nearest_node, random_point, d_max_step=self.d_waypoint_distance)
 
         if obstacle_free(nearest_node.point, new_point):
             new_node = InformativeTreeNode(new_point)    
@@ -177,8 +177,12 @@ def rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_sou
             
             # Update the information gain for the new node
             new_node.information = gain_function(self, new_node, agent_idx)
-
-            rewire(X_near, new_node)
+            # check if it should be pruned
+            if new_node.information <= 0:
+                self.tree_nodes[agent_idx].remove(new_node)
+            else:
+                # Rewire the tree
+                rewire(X_near, new_node)
             if distance_travelled >= budget_portion:
                 break
 
@@ -501,7 +505,7 @@ class RRTRIG_PointSourceInformative_SourceMetric_PathPlanning(InformativeRRTBase
         self.name = "RRTRIG_PointSourceInformative_SourceMetric_Path"
 
     def tree_generation(self, budget_portion, agent_idx):
-        rig_tree_generation(self, budget_portion, agent_idx)
+        rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_source_gain_no_penalties)
 
     def path_selection(self, agent_idx):
         return informative_source_metric_path_selection(self, agent_idx)
@@ -514,7 +518,7 @@ class RRTRIG_PointSourceInformative_Penalties_SourceMetric_PathPlanning(Informat
         super().__init__(*args, **kwargs)
         self.best_estimates = np.array([])
         self.best_bic = -np.inf
-        self.name = "RRTRIG_PointSourceInformative_SourceMetric_Path_Penalties"
+        self.name = "RRTRIG_PointSourceInformative_Penalties_SourceMetric_Path"
 
     def tree_generation(self, budget_portion, agent_idx):
         rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_source_gain)

@@ -1,5 +1,7 @@
 import numpy as np
 import time
+from matplotlib import pyplot as plt
+import threading
 from scipy.spatial import KDTree
 from scipy.stats import uniform
 from informative import BaseInformative
@@ -8,6 +10,78 @@ from path_planning_utils import estimate_sources_bayesian
 from rrt_utils import choose_parent, cost, line_cost, obstacle_free, rewire, \
                       near, steer, nearest, add_node, trace_path_to_root, \
                       node_selection_key_distance, InformativeTreeNode, TreeNode, TreeCollection
+
+# Generic point source gain calculation strategy
+def point_source_gain_no_penalties(self, node, agent_idx):
+    """
+    Generic point source gain calculation strategy for Multi-Agent Informative Source Metric RRT Path Planning algorithms
+
+    Parameters:
+    - self: Assumes a class that inherits from InformativeRRTBaseClass
+    - node: The node for which the point source gain is to be calculated
+    - agent_idx: The index of the agent in the multi-agent system
+
+    """
+    # Gain_nodet = Gain_nodet-1 + Gain_nodet_src
+    def sources_gain(node):
+        x_t, y_t = node.point
+        point_source_gain = 0
+        for source in self.best_estimates:
+            x_k, y_k, intensity = source
+            d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
+            point_source_gain += intensity / d_src**2
+        return point_source_gain
+
+    final_gain = 0
+    current_node = node
+    while current_node.parent:
+        final_gain += sources_gain(current_node)
+        current_node = current_node.parent
+    return final_gain
+
+def point_source_gain(self, node, agent_idx):
+    """
+    Generic point source gain calculation strategy for Multi-Agent Informative Source Metric RRT Path Planning algorithms
+
+    Parameters:
+    - self: Assumes a class that inherits from InformativeRRTBaseClass
+    - node: The node for which the point source gain is to be calculated
+    - agent_idx: Tsahe index of the agent in the multi-agent system
+
+    """
+    # Gain_nodet = Gain_nodet-1 + Gain_nodet_src
+    def sources_gain(node):
+        x_t, y_t = node.point
+        point_source_gain = 0
+        for source in self.best_estimates:
+            x_k, y_k, intensity = source
+            d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
+            point_source_gain += intensity / d_src**2
+        return point_source_gain*distance_penalty(node)*rotation_penalty(node)
+
+    # C_dist^(t,t-1) = exp(-n_src^gain * d_t,t-1) with n_src^gain = 0.1 and d_t,t-1 = ||x_t - x_t-1||
+    def distance_penalty(node):
+        if node.parent:
+            return np.exp(-0.1 * np.linalg.norm(node.point - node.parent.point))
+        return 0
+    # C_rot^(t, t-1) = exp(theta_t^2/sigma_theta^2) with sigma_theta = 0.1 and theta_t = atan2(y_t - y_t-1, x_t - x_t-1)
+    def rotation_penalty(node):
+        if node.parent:
+            theta_t = np.arctan2(node.point[1] - node.parent.point[1], node.point[0] - node.parent.point[0])
+            return np.exp(theta_t**2 / 0.1)
+        return 0
+    # If there are already obs_wp for the other agents, give a severe penalty to the node that is within 5m of the observation point of the other agent
+    for i in range(self.num_agents):
+        if i != agent_idx:
+            for obs_point in self.agents_obs_wp[i]:
+                if np.linalg.norm(node.point - obs_point) < 5:
+                    return -np.inf
+    final_gain = 0
+    current_node = node
+    while current_node.parent:
+        final_gain += sources_gain(current_node) 
+        current_node = current_node.parent
+    return final_gain	
 
 # RRT Tree Generic generation strategy
 def rrt_tree_generation(self, budget_portion, agent_idx):
@@ -78,7 +152,7 @@ def rrt_star_tree_generation(self, budget_portion, agent_idx):
     self.agents_trees[agent_idx].add(self.root)  # Consider all nodes for plotting
 
 # RIG Tree Generic generation strategy with point source gain calculation
-def rig_tree_generation(self, budget_portion, agent_idx):
+def rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_source_gain_no_penalties):
     """
     Generic tree generation strategy for Multi-Agent Informative Source Metric RRT Path Planning algorithms
 
@@ -102,7 +176,7 @@ def rig_tree_generation(self, budget_portion, agent_idx):
             distance_travelled += np.linalg.norm(new_node.point - nearest_node.point)
             
             # Update the information gain for the new node
-            new_node.information = point_source_gain(self, new_node, agent_idx)
+            new_node.information = gain_function(self, new_node, agent_idx)
 
             rewire(X_near, new_node)
             if distance_travelled >= budget_portion:
@@ -227,43 +301,6 @@ def bias_beta_path_selection(self, agent_idx):
     path.reverse()  # Reverse to start from root
     return path
 
-# Generic point source gain calculation strategy
-def point_source_gain(self, node, agent_idx):
-    """
-    Generic point source gain calculation strategy for Multi-Agent Informative Source Metric RRT Path Planning algorithms
-
-    Parameters:
-    - self: Assumes a class that inherits from InformativeRRTBaseClass
-    - node: The node for which the point source gain is to be calculated
-    - agent_idx: The index of the agent in the multi-agent system
-
-    """
-    # Gain_nodet = Gain_nodet-1 + Gain_nodet_src
-    def sources_gain(node):
-        x_t, y_t = node.point
-        point_source_gain = 0
-        for source in self.best_estimates:
-            x_k, y_k, intensity = source
-            d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
-            point_source_gain += intensity / d_src**2
-        return point_source_gain
-    
-    # If there are already obs_wp for the other agents, give a severe penalty to the node that is within 5m of the observation point of the other agent
-    for i in range(self.num_agents):
-        if i != agent_idx:
-            for obs_point in self.agents_obs_wp[i]:
-                if np.linalg.norm(node.point - obs_point) < 5:
-                    return -np.inf
-    
-    final_gain = 0
-    current_node = node
-    while current_node.parent:
-        final_gain += sources_gain(current_node)
-        current_node = current_node.parent
-    return final_gain
-
-
-
 # Create a generic RRT Class with to be implemented methods and the overall structure and main loop of the algorithm
 class InformativeRRTBaseClass():
     """
@@ -314,6 +351,7 @@ class InformativeRRTBaseClass():
         for i in range(self.num_agents):
             self.initialize_trees(self.agent_positions[i], i)
         start_time = time.time()
+        # self.plot_agents_paths_threaded()
         with tqdm(total=sum(self.budget), desc="Running " + str(self.num_agents) + " Agent " + self.name) as pbar:
             while any(b > 0 for b in self.budget):
                 for i in range(self.num_agents):
@@ -330,7 +368,69 @@ class InformativeRRTBaseClass():
                 self.information_update()
         self.time_taken = time.time() - start_time
         return self.finalize_all_agents()
-    
+
+    # def plot_agents_paths_threaded(self):
+    #     def plot_thread():
+    #         plt.ion()
+    #         fig, ax = plt.subplots()
+    #         ax.set_xlim(0, self.scenario.workspace_size[0])
+    #         ax.set_ylim(0, self.scenario.workspace_size[1])
+    #         ax.set_aspect('equal')
+
+    #         # Define a list of colors to use for different agents
+    #         agent_colors = ['blue', 'green', 'orange', 'purple', 'brown']
+    #         tree_colors = [f'light{color}' for color in agent_colors]
+
+    #         # Plot initial positions and best estimates
+    #         for pos, color in zip(self.agent_positions, agent_colors):
+    #             ax.plot(pos[0], pos[1], 'o', color=color)
+    #         for source in self.best_estimates:
+    #             ax.scatter(source[0], source[1], marker='x', color='orange', label='Best Estimate')
+    #         for real_source in self.scenario.sources:
+    #             ax.scatter(real_source[0], real_source[1], marker='x', color='purple', label='Real Source')
+    #         # legened outsitde to the right
+    #         plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+    #         # Keep track of the last drawn index for each agent
+    #         last_drawn_indices = [0] * self.num_agents
+
+    #         while True:
+    #             for i, (agent_tree_nodes, agent_full_path) in enumerate(zip(self.tree_nodes, self.agents_full_path)):
+    #                 # Update the tree with a faded color
+    #                 for node in agent_tree_nodes:
+    #                     if node.parent:
+    #                         ax.plot([node.point[0], node.parent.point[0]], [node.point[1], node.parent.point[1]],
+    #                                 color=tree_colors[i % len(tree_colors)], alpha=0.5)
+
+    #                 # Update the paths with solid agent color
+    #                 new_index = len(agent_full_path)
+    #                 if new_index > last_drawn_indices[i]:
+    #                     new_points = agent_full_path[last_drawn_indices[i]:new_index]
+    #                     ax.plot(*zip(*new_points), 'o-', color=agent_colors[i % len(agent_colors)])
+    #                     last_drawn_indices[i] = new_index
+    #                 # Update the best estimates
+    #                 for source in self.best_estimates:
+    #                     ax.scatter(source[0], source[1], marker='x', color='orange', label='Best Estimate')
+
+
+    #             plt.draw()
+    #             plt.pause(0.01)
+
+    #             # Check if the plotting should continue
+    #             is_budget_remaining = any(b > 0 for b in self.budget)
+    #             if not is_budget_remaining or not plt.fignum_exists(fig.number):
+    #                 break
+
+    #             # Wait for a short period before checking for updates again
+    #             plt.pause(5)
+
+    #         plt.ioff()
+
+    #     # Start the plotting thread
+    #     plot_thread = threading.Thread(target=plot_thread, args=())
+    #     plot_thread.daemon = True
+    #     plot_thread.start()
+
     def update_observations_and_model(self, path, agent_idx):
         if path:
             for point in path:
@@ -402,6 +502,22 @@ class RRTRIG_PointSourceInformative_SourceMetric_PathPlanning(InformativeRRTBase
 
     def tree_generation(self, budget_portion, agent_idx):
         rig_tree_generation(self, budget_portion, agent_idx)
+
+    def path_selection(self, agent_idx):
+        return informative_source_metric_path_selection(self, agent_idx)
+
+    def information_update(self):
+        source_metric_information_update(self)
+
+class RRTRIG_PointSourceInformative_Penalties_SourceMetric_PathPlanning(InformativeRRTBaseClass):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.best_estimates = np.array([])
+        self.best_bic = -np.inf
+        self.name = "RRTRIG_PointSourceInformative_SourceMetric_Path_Penalties"
+
+    def tree_generation(self, budget_portion, agent_idx):
+        rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_source_gain)
 
     def path_selection(self, agent_idx):
         return informative_source_metric_path_selection(self, agent_idx)

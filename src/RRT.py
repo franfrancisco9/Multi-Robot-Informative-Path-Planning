@@ -38,15 +38,46 @@ def point_source_gain_no_penalties(self, node, agent_idx):
         final_gain += sources_gain(current_node)
         current_node = current_node.parent
     return final_gain
-
-def point_source_gain(self, node, agent_idx):
+def point_source_gain_only_distance_penalty(self, node, agent_idx):
     """
     Generic point source gain calculation strategy for Multi-Agent Informative Source Metric RRT Path Planning algorithms
 
     Parameters:
     - self: Assumes a class that inherits from InformativeRRTBaseClass
     - node: The node for which the point source gain is to be calculated
-    - agent_idx: Tsahe index of the agent in the multi-agent system
+    - agent_idx: The index of the agent in the multi-agent system
+
+    """
+    # Gain_nodet = Gain_nodet-1 + Gain_nodet_src
+    def sources_gain(node):
+        x_t, y_t = node.point
+        point_source_gain = 0
+        for source in self.best_estimates:
+            x_k, y_k, intensity = source
+            d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
+            point_source_gain += intensity / d_src**2
+        return point_source_gain*distance_penalty(node)
+
+    # C_dist^(t,t-1) = exp(-n_src^gain * d_t,t-1) with n_src^gain = 0.1 and d_t,t-1 = ||x_t - x_t-1||
+    def distance_penalty(node):
+        if node.parent:
+            return np.exp(-0.1 * np.linalg.norm(node.point - node.parent.point))
+        return 0
+
+    final_gain = 0
+    current_node = node
+    while current_node.parent:
+        final_gain += sources_gain(current_node) 
+        current_node = current_node.parent
+    return final_gain
+def point_source_gain_distance_rotation_penalty(self, node, agent_idx):
+    """
+    Generic point source gain calculation strategy for Multi-Agent Informative Source Metric RRT Path Planning algorithms
+
+    Parameters:
+    - self: Assumes a class that inherits from InformativeRRTBaseClass
+    - node: The node for which the point source gain is to be calculated
+    - agent_idx: The index of the agent in the multi-agent system
 
     """
     # Gain_nodet = Gain_nodet-1 + Gain_nodet_src
@@ -70,12 +101,69 @@ def point_source_gain(self, node, agent_idx):
             theta_t = np.arctan2(node.point[1] - node.parent.point[1], node.point[0] - node.parent.point[0])
             return np.exp(theta_t**2 / 0.1)
         return 0
+
+    final_gain = 0
+    current_node = node
+    while current_node.parent:
+        final_gain += sources_gain(current_node) 
+        current_node = current_node.parent
+    return final_gain
+def point_source_gain_all(self, node, agent_idx):
+    """
+    Generic point source gain calculation strategy for Multi-Agent Informative Source Metric RRT Path Planning algorithms
+
+    Parameters:
+    - self: Assumes a class that inherits from InformativeRRTBaseClass
+    - node: The node for which the point source gain is to be calculated
+    - agent_idx: Tsahe index of the agent in the multi-agent system
+
+    """
+    # Gain_nodet = Gain_nodet-1 + Gain_nodet_src
+    def sources_gain(node):
+        x_t, y_t = node.point
+        point_source_gain = 0
+        for source in self.best_estimates:
+            x_k, y_k, intensity = source
+            d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
+            point_source_gain += intensity / d_src**2
+        return point_source_gain*distance_penalty(node)*rotation_penalty(node)*exploitation_penalty(node)
+
+    # C_dist^(t,t-1) = exp(-n_src^gain * d_t,t-1) with n_src^gain = 0.1 and d_t,t-1 = ||x_t - x_t-1||
+    def distance_penalty(node):
+        if node.parent:
+            return np.exp(-0.1 * np.linalg.norm(node.point - node.parent.point))
+        return 0
+    # C_rot^(t, t-1) = exp(theta_t^2/sigma_theta^2) with sigma_theta = 0.1 and theta_t = atan2(y_t - y_t-1, x_t - x_t-1)
+    def rotation_penalty(node):
+        if node.parent:
+            theta_t = np.arctan2(node.point[1] - node.parent.point[1], node.point[0] - node.parent.point[0])
+            return np.exp(theta_t**2 / 0.1)
+        return 0
+    # define a penalty that is applied if more than 5 observation points are in a rectangle that goes in the direction of the parent node as to 
+    # promot exploration
+    def exploitation_penalty(node):
+        if node.parent:
+            x_t, y_t = node.point
+            x_t_1, y_t_1 = node.parent.point
+            # Define the rectangle
+            x_min = min(x_t, x_t_1)
+            x_max = max(x_t, x_t_1)
+            y_min = min(y_t, y_t_1)
+            y_max = max(y_t, y_t_1)
+            count = 0
+            for obs_point in self.agents_obs_wp[agent_idx]:
+                if x_min <= obs_point[0] <= x_max and y_min <= obs_point[1] <= y_max:
+                    count += 1
+            if count > 5:
+                return np.exp(-1 * count)
+        return 0
     # If there are already obs_wp for the other agents, give a severe penalty to the node that is within 5m of the observation point of the other agent
     for i in range(self.num_agents):
         if i != agent_idx:
             for obs_point in self.agents_obs_wp[i]:
-                if np.linalg.norm(node.point - obs_point) < 5:
+                if np.linalg.norm(node.point - obs_point) < self.d_waypoint_distance:
                     return -np.inf
+            
     final_gain = 0
     current_node = node
     while current_node.parent:
@@ -510,15 +598,47 @@ class RRTRIG_PointSourceInformative_SourceMetric_PathPlanning(InformativeRRTBase
     def information_update(self):
         source_metric_information_update(self)
 
-class RRTRIG_PointSourceInformative_Penalties_SourceMetric_PathPlanning(InformativeRRTBaseClass):
+class RRTRIG_PointSourceInformative_Distance_SourceMetric_PathPlanning(InformativeRRTBaseClass):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.best_estimates = np.array([])
         self.best_bic = -np.inf
-        self.name = "RRTRIG_PointSourceInformative_Penalties_SourceMetric_Path"
+        self.name = "RRTRIG_PointSourceInformative_Distance_SourceMetric_Path"
 
     def tree_generation(self, budget_portion, agent_idx):
-        rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_source_gain)
+        rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_source_gain_only_distance_penalty)
+
+    def path_selection(self, agent_idx):
+        return informative_source_metric_path_selection(self, agent_idx)
+
+    def information_update(self):
+        source_metric_information_update(self)
+
+class RRTRIG_PointSourceInformative_DistanceRotation_SourceMetric_PathPlanning(InformativeRRTBaseClass):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.best_estimates = np.array([])
+        self.best_bic = -np.inf
+        self.name = "RRTRIG_PointSourceInformative_DistanceRotation_SourceMetric_Path"
+
+    def tree_generation(self, budget_portion, agent_idx):
+        rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_source_gain_distance_rotation_penalty)
+
+    def path_selection(self, agent_idx):
+        return informative_source_metric_path_selection(self, agent_idx)
+
+    def information_update(self):
+        source_metric_information_update(self)
+
+class RRTRIG_PointSourceInformative_All_SourceMetric_PathPlanning(InformativeRRTBaseClass):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.best_estimates = np.array([])
+        self.best_bic = -np.inf
+        self.name = "RRTRIG_PointSourceInformative_All_SourceMetric_Path"
+
+    def tree_generation(self, budget_portion, agent_idx):
+        rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_source_gain_all)
 
     def path_selection(self, agent_idx):
         return informative_source_metric_path_selection(self, agent_idx)

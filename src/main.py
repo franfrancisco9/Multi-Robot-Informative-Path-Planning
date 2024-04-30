@@ -4,7 +4,7 @@ import json
 from tqdm import tqdm
 
 # Assuming the modules are correctly implemented
-from boustrophedon import Boustrophedon
+from boustrophedon import *
 from radiation import RadiationField
 from informative import *
 from RRT import *
@@ -118,16 +118,10 @@ def run_simulations(scenarios, strategy_instances, args):
                     Diff_Entropy = calculate_differential_entropy(std)
                     TIME = strategy.time_taken if hasattr(strategy, 'time_taken') else None
                     # Obtain the estimated locations, number of sources, and theta samples
-                    estimated_locs, estimated_num_sources, _ = estimate_sources_bayesian(
-                        strategy.obs_wp, strategy.measurements, 
-                        lambda_b=args["lambda_b"], 
-                        max_sources=args["max_sources"], 
-                        n_samples=args["n_samples"], 
-                        s_stages=args["s_stages"]
-                    )
+                    estimated_locs = strategy.best_estimates if hasattr(strategy, 'best_estimates') else []
                     estimated_locs = np.array(estimated_locs).reshape(-1, 3)
                     Source_lists[strategy_name]['source'].append(estimated_locs)
-                    Source_lists[strategy_name]['n_sources'].append(estimated_num_sources)
+                    Source_lists[strategy_name]['n_sources'].append(len(estimated_locs))
                     
                     tqdm.write(f"{strategy_name} RMSE: {RMSE}")
                     RMSE_lists[strategy_name].append(RMSE)

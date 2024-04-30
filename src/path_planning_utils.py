@@ -139,10 +139,10 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
     if show:
         plt.show()
     distance_histogram(scenario, path.obs_wp, save_fig_title.replace('.png', '_histogram.png'), show=show)
-    # Call source distance function and get the plot for errors between estimated and actual sources
-    # New: Call source_distance with the data from source_list
+
     source_errors_plot_title = save_fig_title.replace('.png', '_source_errors.png')
-    source_distance(scenario, source_list, save_fig_title=source_errors_plot_title, show=show)
+    if hasattr(path, 'best_estimates'):
+        source_distance(scenario, source_list, save_fig_title=source_errors_plot_title, show=show)
     plt.close()
 
     # Additional RRT-specific plots
@@ -334,7 +334,12 @@ def source_distance(scenario, source_list, save_fig_title=None, show=False):
 
         # Compare with each round of predictions
         for sources in source_list['source']:
-            if i < len(sources):
+            if sources == []:
+                # If no sources were estimated, append NaN values
+                these_x_errors.append(np.nan)
+                these_y_errors.append(np.nan)
+                these_intensity_errors.append(np.nan)
+            elif i < len(sources):
                 these_x_errors.append(abs(actual_source[0] - sources[i][0]))
                 these_y_errors.append(abs(actual_source[1] - sources[i][1]))
                 these_intensity_errors.append(abs(actual_source[2] - sources[i][2]))
@@ -343,7 +348,6 @@ def source_distance(scenario, source_list, save_fig_title=None, show=False):
         y_errors.append(these_y_errors)
         intensity_errors.append(these_intensity_errors)
         n_sources_estimated.append(len(these_x_errors))
-
     # Plotting
     fig, ax = plt.subplots(3, 1, figsize=(10, 15), sharex=True)
     source_ids = [f"Source {i+1}" for i in range(len(scenario.sources))]
@@ -397,7 +401,7 @@ def poisson_log_likelihood(theta, obs_wp, obs_vals, lambda_b, M):
 
     return -log_likelihood  # Minimization in optimization routines
 
-def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, M, n_samples, s_stages, prior_dist, alpha=0.1):
+def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, M, n_samples, s_stages, prior_dist, alpha=0.5):
     # Step 1: Select γ1, ..., γs (these are parameters that control the tightness of the approximation)
     gammas = np.zeros(s_stages)
     gammas[0] = 0.1

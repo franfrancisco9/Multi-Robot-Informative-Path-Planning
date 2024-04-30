@@ -270,7 +270,7 @@ def rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_sou
             if distance_travelled >= budget_portion:
                 break
 
-    self.agents_trees[agent_idx].add(self.root)
+        self.agents_trees[agent_idx].add(self.root)
 
 # GP Information Updated Generic Strategy
 def gp_information_update(self):
@@ -340,9 +340,11 @@ def informative_source_metric_path_selection(self, agent_idx):
 
     # Choose path based on radiation gain
     if self.best_estimates.size == 0:
+        # print("Selecting leaf node randomly")
         selected_leaf = np.random.choice(leaf_nodes)  # Random selection if no estimates are available
     else:
         # use node.information as the key for selection
+        # print("Selecting leaf node with the highest information gain")
         selected_leaf = max(leaf_nodes, key=lambda node: node.information)
     # Trace the path from the selected leaf back to the root
     return trace_path_to_root(selected_leaf)
@@ -427,7 +429,6 @@ class InformativeRRTBaseClass():
 
     def initialize_trees(self, start_position, agent_idx):
         self.root = InformativeTreeNode(start_position)
-        self.trees.add(self.root)
         self.current_position = start_position
         self.tree_nodes[agent_idx] = [self.root]
 
@@ -439,11 +440,13 @@ class InformativeRRTBaseClass():
 
         for i in range(self.num_agents):
             self.initialize_trees(self.agent_positions[i], i)
+            self.trees.add(self.root)
         start_time = time.time()
         # self.plot_agents_paths_threaded()
         with tqdm(total=sum(self.budget), desc="Running " + str(self.num_agents) + " Agent " + self.name) as pbar:
             while any(b > 0 for b in self.budget):
                 for i in range(self.num_agents):
+                    # print(f"Agent {i} budget: {self.budget[i]}")
                     if self.budget[i] > 0:
                         self.tree_generation(budget_portion[i], i)
                         path = self.path_selection(i)
@@ -454,6 +457,7 @@ class InformativeRRTBaseClass():
                         pbar.update(budget_spent)
                         if path:
                             self.initialize_trees(path[-1], i)
+                            self.trees.add(self.root)
                 self.information_update()
         self.time_taken = time.time() - start_time
         return self.finalize_all_agents()

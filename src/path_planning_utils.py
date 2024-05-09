@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt, imageio
 from matplotlib import ticker, colors
 import numpy as np
 import os 
-from scipy.stats import poisson, uniform, norm
+from scipy.stats import poisson, uniform, norm, multivariate_normal
 import warnings
 # Ignore for nanmean.
 warnings.simplefilter("ignore", category=RuntimeWarning)
@@ -403,10 +403,7 @@ def poisson_log_likelihood(theta, obs_wp, obs_vals, lambda_b, M):
 
 def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, M, n_samples, s_stages, prior_dist, alpha=0.5):
     # Step 1: Select γ1, ..., γs (these are parameters that control the tightness of the approximation)
-    gammas = np.zeros(s_stages)
-    gammas[0] = 0.1
-    for k in range(1, s_stages):
-        gammas[k] = gammas[k-1] + (1 - gammas[0]) / (s_stages - 1)
+    gammas = np.linspace(0.1, 1.0, s_stages)
         
     # Initialize theta samples either from previous samples or from the prior
     theta_samples = np.column_stack([dist.rvs(n_samples) for dist in prior_dist])
@@ -432,24 +429,12 @@ def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, 
         indices = np.random.choice(n_samples, size=n_samples, p=weights, replace=True)
         resampled_samples = theta_samples[indices, :]
 
-        # Compute KDE parameters once for each source parameter across all samples
-        x_means = resampled_samples[:, ::3].mean(axis=0)
-        y_means = resampled_samples[:, 1::3].mean(axis=0)
-        intensity_means = resampled_samples[:, 2::3].mean(axis=0)
+        # Compute means and covariances for kernel density
+        means = np.mean(resampled_samples, axis=0)
+        covariances = np.cov(resampled_samples, rowvar=False)
 
-        x_stds = resampled_samples[:, ::3].std(axis=0, ddof=1)
-        y_stds = resampled_samples[:, 1::3].std(axis=0, ddof=1)
-        intensity_stds = resampled_samples[:, 2::3].std(axis=0, ddof=1)
-
-        # Sample perturbations in a vectorized way
-        x_perturbations = norm.rvs(loc=x_means, scale=x_stds*alpha, size=(n_samples, M))
-        y_perturbations = norm.rvs(loc=y_means, scale=y_stds*alpha, size=(n_samples, M))
-        intensity_perturbations = norm.rvs(loc=intensity_means, scale=intensity_stds*alpha, size=(n_samples, M))
-
-        # Directly assign perturbations without reshaping
-        resampled_samples[:, ::3] = x_perturbations
-        resampled_samples[:, 1::3] = y_perturbations
-        resampled_samples[:, 2::3] = intensity_perturbations
+        # Sample perturbations from multivariate normal distribution
+        perturbations = multivariate_normal.rvs(mean=means, cov=covariances * alpha, size=n_samples)
 
         # Update the theta samples for the next iteration
         theta_samples = resampled_samples
@@ -539,8 +524,8 @@ def save_plot_iteration(i, scenario, estimated_locs, obs_wp_send):
         ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
         
         # Save the plot
-        # plt.savefig(os.path.join(save_dir, f"iteration_{i}_test_" + str(len(scenario.sources)) + ".png"))
-        plt.show()
+        plt.savefig(os.path.join(save_dir, f"iteration_{i}_test_" + str(len(scenario.sources)) + ".png"))
+        # plt.show()
         plt.close(fig)
 
 def log_estimation_details(iteration, estimated_locs, estimated_num_sources, actual_sources):
@@ -574,12 +559,12 @@ if __name__ == "__main__":
     from radiation import RadiationField
     from boustrophedon import Boustrophedon
     # Directory setup for saving plots
-    save_dir = "../runs_review/sources_test"
+    save_dir = "../runs_review/sources_test_new"
     # Simulation and Bayesian estimation parameters
     workspace_size = (40, 40)
     budget = 375
     n_samples = 200  # Number of samples for importance sampling
-    s_stages = 25   # Number of stages for progressive correction
+    s_stages = 5   # Number of stages for progressive correction
     max_sources = 3 # Max number of sources to test
     lambda_b = 1    # Background radiation level
     iteration_step = 10  # Iteration step for progressive estimation

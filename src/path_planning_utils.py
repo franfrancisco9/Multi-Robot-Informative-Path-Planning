@@ -334,7 +334,7 @@ def source_distance(scenario, source_list, save_fig_title=None, show=False):
 
         # Compare with each round of predictions
         for sources in source_list['source']:
-            if sources == []:
+            if len(sources) == 0:
                 # If no sources were estimated, append NaN values
                 these_x_errors.append(np.nan)
                 these_y_errors.append(np.nan)
@@ -380,26 +380,43 @@ Citation:
 M. Morelande, B. Ristic and A. Gunatilaka, "Detection and parameter estimation of multiple radioactive sources," 
 2007 10th International Conference on Information Fusion, Quebec, QC, Canada, 2007, pp. 1-7, doi: 10.1109/ICIF.2007.4408094. 
 """
-
 def poisson_log_likelihood(theta, obs_wp, obs_vals, lambda_b, M):
+    """
+    Calculate the Poisson log-likelihood for given source parameters and observations.
+
+    Parameters:
+    theta (array): Flattened array of source parameters (x, y, intensity).
+    obs_wp (array): Array of observation points (x, y).
+    obs_vals (array): Observed counts at each observation point.
+    lambda_b (float): Background radiation level.
+    M (int): Number of sources.
+
+    Returns:
+    float: Negative log-likelihood value.
+    """
+    # Convert observed values to integer counts
     converted_obs_vals = np.round(obs_vals).astype(int) 
 
     log_likelihood = 0.0
+    # Reshape theta into a matrix of sources
     sources = theta.reshape((M, 3)) if len(theta) == 3 * M else np.array([theta])
+
+    # Iterate over each observation point
     for obs_index, (x_obs, y_obs) in enumerate(obs_wp):
-        lambda_j = lambda_b
+        lambda_j = lambda_b  # Initialize with background radiation
         for source in sources:
             x_source, y_source, source_intensity = source
             d_ji = np.sqrt((x_obs - x_source)**2 + (y_obs - y_source)**2)
-            # Convert source intensity to expected counts at this point by applying alpha
+            # Add source contribution to expected count
             alpha_i = source_intensity 
             lambda_j += alpha_i / max(d_ji**2, 1e-6)
 
-        # Use converted_obs_vals which are now in the appropriate count format
+        # Calculate log PMF and accumulate to log-likelihood
         log_pmf = poisson.logpmf(converted_obs_vals[obs_index], lambda_j)
         log_likelihood += log_pmf
 
-    return -log_likelihood  # Minimization in optimization routines
+    return -log_likelihood  # Return negative log-likelihood for minimization
+
 
 def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, M, n_samples, s_stages, prior_dist, alpha=0.5):
     # Step 1: Select γ1, ..., γs (these are parameters that control the tightness of the approximation)
@@ -447,7 +464,7 @@ def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, 
     
 def calculate_bic(log_likelihood, num_params, num_data_points):
     """Calculate the Bayesian Information Criterion."""
-    bic = - 2 * log_likelihood + num_params * np.log(num_data_points)
+    bic = - 2 * log_likelihood - num_params * np.log(num_data_points)
     return bic
 
 def estimate_sources_bayesian(obs_wp, obs_vals, lambda_b, max_sources, n_samples, s_stages):
@@ -482,7 +499,7 @@ def estimate_sources_bayesian(obs_wp, obs_vals, lambda_b, max_sources, n_samples
         
         # Calculate BIC
         bic = calculate_bic(log_likelihood, num_params, len(obs_vals))
-        #print("BIC:", bic)
+        # print("BIC:", bic)
         if bic > best_bic:
             best_bic = bic
             best_estimate = theta_estimate
@@ -559,12 +576,12 @@ if __name__ == "__main__":
     from radiation import RadiationField
     from boustrophedon import Boustrophedon
     # Directory setup for saving plots
-    save_dir = "../runs_review/sources_test_new"
+    save_dir = "../runs_review/big_test"
     # Simulation and Bayesian estimation parameters
     workspace_size = (40, 40)
     budget = 375
-    n_samples = 200  # Number of samples for importance sampling
-    s_stages = 5   # Number of stages for progressive correction
+    n_samples = 1000  # Number of samples for importance sampling
+    s_stages = 10   # Number of stages for progressive correction
     max_sources = 3 # Max number of sources to test
     lambda_b = 1    # Background radiation level
     iteration_step = 10  # Iteration step for progressive estimation
@@ -573,7 +590,7 @@ if __name__ == "__main__":
 
     for num_sources in range(1, 4, 1):
         # Setup scenario and boustrophedon
-        scenario = RadiationField(workspace_size=workspace_size, num_sources=num_sources, seed=42)
+        scenario = RadiationField(workspace_size=workspace_size, num_sources=num_sources, seed=95789)
         boust = Boustrophedon(scenario, budget=budget)
         
         Z_pred, std = boust.run()

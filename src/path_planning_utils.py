@@ -47,7 +47,7 @@ def run_number_from_folder():
     next_run_number = max(run_numbers) + 1 if run_numbers else 1
     return next_run_number
 
-def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list, source_list, rounds, run_number, save=False, show=False):
+def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list, wrmse_list, source_list, rounds, run_number, save=False, show=False):
     """
     Generates and optionally saves or shows various plots related to a scenario.
     
@@ -126,12 +126,12 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
     axs[1, 0].set_title('Uncertainty Field')
     axs[1, 0].set_facecolor('pink')
 
-    # Plot RMSE
-    axs[1, 1].errorbar(scenario_number, np.mean(rmse_list), yerr=np.std(rmse_list), fmt='o', linewidth=2, capsize=6)
-    axs[1, 1].set_title(f'{rounds} Run Average RMSE')
-    axs[1, 1].set_xlabel(f'Scenario {scenario_number}')
-    axs[1, 1].set_xticks([scenario_number])
-    axs[1, 1].set_ylabel('RMSE')
+    # Plot RMSE and WRMSE Box plots to show evolution accross rounds
+    axs[1, 1].boxplot([rmse_list, wrmse_list], labels=['RMSE', 'WRMSE'])
+    axs[1, 1].set_title('RMSE and WRMSE Evolution')
+    axs[1, 1].set_xlabel('Metric')
+    axs[1, 1].set_ylabel('Value')
+    axs[1, 1].grid(True)
 
     # Show or save the plot as needed
     if save:
@@ -225,7 +225,7 @@ def distance_histogram(scenario, obs_wp, save_fig_title=None, show=False):
     if show:
         plt.show()
 
-def save_run_info(run_number, rmse_per_scenario, entropy_per_scenario, source_per_scenario, time_per_scenario, args, scenario_classes, folder_path="../runs_review"):
+def save_run_info(run_number, rmse_per_scenario, wrmse_per_scenario, entropy_per_scenario, source_per_scenario, time_per_scenario, args, scenario_classes, folder_path="../runs_review"):
     os.makedirs(folder_path, exist_ok=True)
     filename = os.path.join(folder_path, f"run_{run_number}.txt")
 
@@ -274,6 +274,12 @@ def save_run_info(run_number, rmse_per_scenario, entropy_per_scenario, source_pe
                     avg_rmse = np.mean(rmses)
                     f.write(f"\t\t{strategy}: Avg RMSE = {avg_rmse:.4f}, Rounds = {len(rmses)}\n")
             
+            f.write("\tWeighted RMSE:\n")
+            if scenario_key in wrmse_per_scenario:
+                for strategy, wrmses in wrmse_per_scenario[scenario_key].items():
+                    avg_wrmse = np.mean(wrmses)
+                    f.write(f"\t\t{strategy}: Avg WRMSE = {avg_wrmse:.4f}, Rounds = {len(wrmses)}\n")
+                    
             f.write("\tDifferential Entropy:\n")
             if scenario_key in entropy_per_scenario:
                 for strategy, entropies in entropy_per_scenario[scenario_key].items():
@@ -394,39 +400,28 @@ def poisson_log_likelihood(theta, obs_wp, obs_vals, lambda_b, M):
     Returns:
     float: Negative log-likelihood value.
     """
-    # Convert observed values to integer counts
-    converted_obs_vals = np.round(obs_vals).astype(int) 
-
+    converted_obs_vals = np.round(obs_vals).astype(int)  # Ensure integer counts
     log_likelihood = 0.0
-    # Reshape theta into a matrix of sources
     sources = theta.reshape((M, 3)) if len(theta) == 3 * M else np.array([theta])
 
-    # Iterate over each observation point
     for obs_index, (x_obs, y_obs) in enumerate(obs_wp):
-        lambda_j = lambda_b  # Initialize with background radiation
+        lambda_j = lambda_b
         for source in sources:
             x_source, y_source, source_intensity = source
             d_ji = np.sqrt((x_obs - x_source)**2 + (y_obs - y_source)**2)
-            # Add source contribution to expected count
             alpha_i = source_intensity 
             lambda_j += alpha_i / max(d_ji**2, 1e-6)
 
-        # Calculate log PMF and accumulate to log-likelihood
         log_pmf = poisson.logpmf(converted_obs_vals[obs_index], lambda_j)
         log_likelihood += log_pmf
 
-    return -log_likelihood  # Return negative log-likelihood for minimization
-
+    return -log_likelihood
 
 def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, M, n_samples, s_stages, prior_dist, alpha=0.5):
-    # Step 1: Select γ1, ..., γs (these are parameters that control the tightness of the approximation)
-    gammas = np.linspace(0.1, 1.0, s_stages)
+    gammas = np.linspace(0.01, 1.0, s_stages)  # Define gamma values for progressive correction
         
-    # Initialize theta samples either from previous samples or from the prior
     theta_samples = np.column_stack([dist.rvs(n_samples) for dist in prior_dist])
-    # print("Initial theta samples:", theta_samples)
-    theta_samples_prev = theta_samples.copy()  # Store the initial sample for the first iteration
-    # print("Initial theta samples:", theta_samples)
+    theta_samples_prev = theta_samples.copy()
 
     def calc_weights(theta, gamma, obs_wp, obs_vals, lambda_b, M):
         n_samples = len(theta)
@@ -436,50 +431,46 @@ def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, 
             log_weights[i] = gamma * sample_log_likelihood
             
         weights = np.exp(log_weights - np.max(log_weights))  # Normalize the weights
-        weights /= np.sum(weights)  # Ensure the weights sum to 1
+        weights /= np.sum(weights)
         return weights
 
-    # for k in tqdm(range(s_stages), desc="Progressive Correction"):
     for k in range(s_stages):
         gamma = gammas[k]
         weights = calc_weights(theta_samples_prev, gamma, obs_wp, obs_vals, lambda_b, M)
+        if np.any(np.isnan(weights)):
+            print("Warning: NaN weights encountered. Skipping stage.")
+            continue
         indices = np.random.choice(n_samples, size=n_samples, p=weights, replace=True)
         resampled_samples = theta_samples[indices, :]
 
-        # Compute means and covariances for kernel density
         means = np.mean(resampled_samples, axis=0)
         covariances = np.cov(resampled_samples, rowvar=False)
 
-        # Sample perturbations from multivariate normal distribution
-        perturbations = multivariate_normal.rvs(mean=means, cov=covariances * alpha, size=n_samples)
-
-        # Update the theta samples for the next iteration
-        theta_samples = resampled_samples
+        perturbations = multivariate_normal.rvs(mean=means, cov=covariances*alpha, size=n_samples)
+        # make sure they are within the bounds for x, y, and intensity
+        perturbations[:, 0] = np.clip(perturbations[:, 0], 0, 40)
+        perturbations[:, 1] = np.clip(perturbations[:, 1], 0, 40)
+        perturbations[:, 2] = np.clip(perturbations[:, 2], 1e4, 1e5)
+        
+        theta_samples = perturbations
         theta_samples_prev = theta_samples.copy()
 
-
-    # Compute the final parameter estimate
     theta_estimate = np.mean(theta_samples, axis=0)
     return theta_estimate, theta_samples
-    
+  
 def calculate_bic(log_likelihood, num_params, num_data_points):
     """Calculate the Bayesian Information Criterion."""
-    bic = - 2 * log_likelihood - num_params * np.log(num_data_points)
+    bic =  2 * log_likelihood + num_params * np.log(num_data_points)
     return bic
 
 def estimate_sources_bayesian(obs_wp, obs_vals, lambda_b, max_sources, n_samples, s_stages):
     best_bic = -np.inf
     best_estimate = None
     best_M = 0
-    # for M in tqdm(range(1, max_sources + 1), desc="Estimating Sources"):
     for M in range(1, max_sources + 1):
-        #print(f"Estimating sources for M = {M}/{max_sources}")
-        # Define the prior distribution for source parameters (uniform within workspace)
-        prior_x = uniform(loc=0, scale=40)  # Uniform distribution for x
-        prior_y = uniform(loc=0, scale=40)  # Uniform distribution for y
-        # from 1e3 to 1e5
+        prior_x = uniform(loc=0, scale=40)
+        prior_y = uniform(loc=0, scale=40)
         prior_intensity = uniform(loc=1e4, scale=1e5)
-        # Prior distribution for all parameters of all sources
         prior_dist = [prior_x, prior_y, prior_intensity] * M
 
         theta_estimate, theta_samples = importance_sampling_with_progressive_correction(
@@ -491,20 +482,15 @@ def estimate_sources_bayesian(obs_wp, obs_vals, lambda_b, max_sources, n_samples
             s_stages,
             prior_dist
         )
-        # Compute the posterior expectation of the theta estimate
         log_likelihood = -poisson_log_likelihood(theta_estimate, obs_wp, obs_vals, lambda_b, M)
-
-        # Number of parameters is 3 times the number of sources
         num_params = 3 * M
-        
-        # Calculate BIC
         bic = calculate_bic(log_likelihood, num_params, len(obs_vals))
-        # print("BIC:", bic)
+        # print(f"M = {M}, BIC = {bic}")
         if bic > best_bic:
             best_bic = bic
             best_estimate = theta_estimate
             best_M = M
-    #print("prev_theta_samples:", len(prev_theta_samples))
+
     return best_estimate, best_M, best_bic
 
 def create_gif(save_dir, output_filename="sources_estimation_test_0.gif"):

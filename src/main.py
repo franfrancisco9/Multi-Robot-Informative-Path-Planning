@@ -96,6 +96,7 @@ def run_simulations(scenarios, strategy_instances, args):
         run_number = args["run_number"]
     print(f"Run number: {run_number}")
     RMSE_per_scenario = {}
+    WRMSE_per_scenario = {}
     Diff_Entropy_per_scenario = {}
     TIME_per_scenario = {}
     Source_per_scenario = {}
@@ -105,6 +106,7 @@ def run_simulations(scenarios, strategy_instances, args):
             print("#" * 80)
             # Temporary storage for the current scenario's RMSE and differential entropy
             RMSE_lists = {strategy_name: [] for strategy_name in strategy_instances}
+            WRMSE_lists = {strategy_name: [] for strategy_name in strategy_instances}
             Diff_Entropy_lists = {strategy_name: [] for strategy_name in strategy_instances}
             TIME_lists = {strategy_name: [] for strategy_name in strategy_instances}
             Source_lists = {strategy_name: {'source':[], 'n_sources': []} for strategy_name in strategy_instances}
@@ -115,6 +117,8 @@ def run_simulations(scenarios, strategy_instances, args):
                     Z_pred, std = strategy.run()
                     Z_true = scenario.ground_truth()
                     RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
+                    WEIGHTED_RMSE = np.sqrt(np.sum((Z_true * (np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2)) / np.sum(Z_true))
+
                     Diff_Entropy = calculate_differential_entropy(std)
                     TIME = strategy.time_taken if hasattr(strategy, 'time_taken') else None
                     # Obtain the estimated locations, number of sources, and theta samples
@@ -123,21 +127,23 @@ def run_simulations(scenarios, strategy_instances, args):
                     Source_lists[strategy_name]['source'].append(estimated_locs)
                     Source_lists[strategy_name]['n_sources'].append(len(estimated_locs))
                     
-                    tqdm.write(f"{strategy_name} RMSE: {RMSE}")
+                    tqdm.write(f"{strategy_name} RMSE: {RMSE}, WMSE: {WEIGHTED_RMSE}, Time: {TIME}")
                     RMSE_lists[strategy_name].append(RMSE)
+                    WRMSE_lists[strategy_name].append(WEIGHTED_RMSE)
                     Diff_Entropy_lists[strategy_name].append(Diff_Entropy)
                     TIME_lists[strategy_name].append(TIME)
                     if round_number == args["rounds"]:
-                        helper_plot(scenario, scenario_idx, Z_true, Z_pred, std, strategy, RMSE_lists[strategy_name], Source_lists[strategy_name], 
-                                    args["rounds"], run_number, save=args["save"], show=args["show"])
+                        helper_plot(scenario, scenario_idx, Z_true, Z_pred, std, strategy, RMSE_lists[strategy_name], WRMSE_lists[strategy_name],
+                                    Source_lists[strategy_name], args["rounds"], run_number, save=args["save"], show=args["show"])
                     pbar.update(1)
             RMSE_per_scenario[f"Scenario_{scenario_idx}"] = RMSE_lists
+            WRMSE_per_scenario[f"Scenario_{scenario_idx}"] = WRMSE_lists
             Diff_Entropy_per_scenario[f"Scenario_{scenario_idx}"] = Diff_Entropy_lists
             Source_per_scenario[f"Scenario_{scenario_idx}"] = Source_lists
             TIME_per_scenario[f"Scenario_{scenario_idx}"] = TIME_lists
 
     # Save run information after processing all scenarios
-    save_run_info(run_number, RMSE_per_scenario, Diff_Entropy_per_scenario, Source_per_scenario, TIME_per_scenario, args, scenarios)
+    save_run_info(run_number, RMSE_per_scenario, WRMSE_per_scenario, Diff_Entropy_per_scenario, Source_per_scenario, TIME_per_scenario, args, scenarios)
 
 def main():
     parser = argparse.ArgumentParser(description="Run path planning scenarios.")

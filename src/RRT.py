@@ -10,7 +10,7 @@ from path_planning_utils import estimate_sources_bayesian
 from rrt_utils import choose_parent, cost, line_cost, obstacle_free, rewire, \
                       near, steer, nearest, add_node, trace_path_to_root, \
                       node_selection_key_distance, InformativeTreeNode, TreeNode, TreeCollection
-
+from radiation import RadiationField
 # Generic point source gain calculation strategy
 def point_source_gain_no_penalties(self, node, agent_idx):
     """
@@ -546,9 +546,20 @@ class InformativeRRTBaseClass():
         self.full_path = sum((agent_path for agent_path in self.agents_full_path), [])
         self.obs_wp = np.array(self.obs_wp)
         self.full_path = np.array(self.full_path).reshape(-1, 2).T
-        Z_pred, std = self.scenario.predict_spatial_field(self.obs_wp , np.array(self.measurements))
+
+        if hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
+            num_sources = len(self.best_estimates)
+            new_scenario = RadiationField(num_sources=num_sources, workspace_size=self.scenario.workspace_size,
+                                        intensity_range=(1e4, 1e5))
+            for i, estimate in enumerate(self.best_estimates):
+                new_scenario.update_source(i, *estimate)
+            print("Best Estimates: ", self.best_estimates)
+            _ , std = self.scenario.predict_spatial_field(self.obs_wp, np.array(self.measurements))
+            Z_pred = new_scenario.g_truth
+        else:
+            Z_pred, std = self.scenario.predict_spatial_field(self.obs_wp, np.array(self.measurements))
+        
         return Z_pred, std
-    
     def tree_generation(self, budget_portion, agent_idx):
         raise NotImplementedError("tree_generation method must be implemented in the subclass")
     
@@ -594,6 +605,7 @@ class RRTRIG_PointSourceInformative_SourceMetric_PathPlanning(InformativeRRTBase
         self.name = "RRTRIG_PointSourceInformative_SourceMetric_Path"
 
     def tree_generation(self, budget_portion, agent_idx):
+        # rrt_tree_generation(self, budget_portion, agent_idx)
         rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_source_gain_no_penalties)
 
     def path_selection(self, agent_idx):
@@ -642,7 +654,8 @@ class RRTRIG_PointSourceInformative_All_SourceMetric_PathPlanning(InformativeRRT
         self.name = "RRTRIG_PointSourceInformative_All_SourceMetric_Path"
 
     def tree_generation(self, budget_portion, agent_idx):
-        rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_source_gain_all)
+        # rrt_tree_generation(self, budget_portion, agent_idx)
+        rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_source_gain_no_penalties)
 
     def path_selection(self, agent_idx):
         return informative_source_metric_path_selection(self, agent_idx)

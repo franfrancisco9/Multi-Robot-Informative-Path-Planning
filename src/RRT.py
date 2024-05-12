@@ -186,7 +186,7 @@ def rrt_tree_generation(self, budget_portion, agent_idx):
     while distance_travelled < budget_portion:
         random_point = np.random.rand(2) * self.scenario.workspace_size
         nearest_node = min(self.tree_nodes[agent_idx], key=lambda node: node_selection_key_distance(node, random_point))
-        new_point = steer(nearest_node, random_point, d_max_step=1.0)
+        new_point = steer(nearest_node, random_point, d_max_step=self.d_waypoint_distance)
 
         if obstacle_free(nearest_node.point, new_point):
             new_node = InformativeTreeNode(new_point, nearest_node)

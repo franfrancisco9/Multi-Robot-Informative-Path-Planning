@@ -94,12 +94,13 @@ def run_simulations(scenarios, strategy_instances, args):
         run_number = run_number_from_folder()
     else:
         run_number = args["run_number"]
-    print(f"Run number: {run_number}")
+    print(f"\nRun number: {run_number}\n")
     RMSE_per_scenario = {}
     WRMSE_per_scenario = {}
     Diff_Entropy_per_scenario = {}
     TIME_per_scenario = {}
     Source_per_scenario = {}
+    PATHS_per_scenario = {}
 
     with tqdm(total=args["rounds"] * len(scenarios) * len(strategy_instances), desc="Overall Progress") as pbar:
         for scenario_idx, scenario in enumerate(scenarios, start=1):
@@ -110,6 +111,7 @@ def run_simulations(scenarios, strategy_instances, args):
             Diff_Entropy_lists = {strategy_name: [] for strategy_name in strategy_instances}
             TIME_lists = {strategy_name: [] for strategy_name in strategy_instances}
             Source_lists = {strategy_name: {'source':[], 'n_sources': []} for strategy_name in strategy_instances}
+            Path_lists = {strategy_name: {'full_path': [], 'agents_full_path': [], 'obs_wp': [], 'z_pred': []} for strategy_name in strategy_instances}
             for round_number in range(1, args["rounds"] + 1):
                 for strategy_name, constructor in strategy_instances.items():
                     strategy = constructor(scenario)
@@ -126,7 +128,11 @@ def run_simulations(scenarios, strategy_instances, args):
                     estimated_locs = np.array(estimated_locs).reshape(-1, 3)
                     Source_lists[strategy_name]['source'].append(estimated_locs)
                     Source_lists[strategy_name]['n_sources'].append(len(estimated_locs))
-                    
+                    Path_lists[strategy_name]['full_path'].append(strategy.full_path)
+                    Path_lists[strategy_name]['agents_full_path'].append(strategy.agents_full_path)
+                    Path_lists[strategy_name]['obs_wp'].append(strategy.obs_wp)
+                    Path_lists[strategy_name]['z_pred'].append(Z_pred)
+
                     tqdm.write(f"{strategy_name} RMSE: {RMSE}, WMSE: {WEIGHTED_RMSE}, Time: {TIME}")
                     RMSE_lists[strategy_name].append(RMSE)
                     WRMSE_lists[strategy_name].append(WEIGHTED_RMSE)
@@ -134,13 +140,14 @@ def run_simulations(scenarios, strategy_instances, args):
                     TIME_lists[strategy_name].append(TIME)
                     if round_number == args["rounds"]:
                         helper_plot(scenario, scenario_idx, Z_true, Z_pred, std, strategy, RMSE_lists[strategy_name], WRMSE_lists[strategy_name],
-                                    Source_lists[strategy_name], args["rounds"], run_number, save=args["save"], show=args["show"])
+                                    Source_lists[strategy_name], Path_lists[strategy_name], args["rounds"], run_number, save=args["save"], show=args["show"])
                     pbar.update(1)
             RMSE_per_scenario[f"Scenario_{scenario_idx}"] = RMSE_lists
             WRMSE_per_scenario[f"Scenario_{scenario_idx}"] = WRMSE_lists
             Diff_Entropy_per_scenario[f"Scenario_{scenario_idx}"] = Diff_Entropy_lists
             Source_per_scenario[f"Scenario_{scenario_idx}"] = Source_lists
             TIME_per_scenario[f"Scenario_{scenario_idx}"] = TIME_lists
+            PATHS_per_scenario[f"Scenario_{scenario_idx}"] = Path_lists
 
     # Save run information after processing all scenarios
     save_run_info(run_number, RMSE_per_scenario, WRMSE_per_scenario, Diff_Entropy_per_scenario, Source_per_scenario, TIME_per_scenario, args, scenarios)

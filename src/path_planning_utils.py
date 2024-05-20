@@ -47,7 +47,7 @@ def run_number_from_folder():
     next_run_number = max(run_numbers) + 1 if run_numbers else 1
     return next_run_number
 
-def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list, wrmse_list, source_list, rounds, run_number, save=False, show=False):
+def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list, wrmse_list, source_list, path_list, rounds, run_number, save=False, show=False):
     """
     Generates and optionally saves or shows various plots related to a scenario.
     
@@ -72,7 +72,7 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
     if not os.path.exists(f'../{folder}'):
         os.makedirs(f'../{folder}')
     save_fig_title = f'../{folder}/run_{rounds}_scenario_{scenario_number}_path_{path.name}.png'
-    if hasattr(path, 'beta_t'):
+    if hasattr(path, 'beta_t') and "SourceMetric" not in path.name:
         strategy_title += f' - Beta_t: {path.beta_t}'
         save_fig_title = save_fig_title.replace('.png', f'_beta_{path.beta_t}.png')
     if hasattr(path, 'num_agents'):
@@ -99,13 +99,13 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
     cs_pred = axs[0, 1].contourf(scenario.X, scenario.Y, z_pred, levels=levels, cmap=cmap, norm=colors.BoundaryNorm(levels, ncolors=cmap.N, clip=True))
     fig.colorbar(cs_pred, ax=axs[0, 1], format=ticker.LogFormatterMathtext())
     axs[0, 1].set_title('Predicted Field')
-    x_new, y_new = path.full_path
+    x_new, y_new = path_list['full_path'][-1]
     if hasattr(path, 'num_agents'):
         # plot each with a different color except for green
         # blue, cyan, magenta, yellow, black, white
         colors_path = ['b', 'c', 'm', 'y', 'k', 'w']
         for i in range(path.num_agents):
-            current_x, current_y = np.array(path.agents_full_path[i]).reshape(-1, 2).T
+            current_x, current_y = np.array(path_list['agents_full_path'][-1][i]).reshape(-1, 2).T
             axs[0, 1].plot(current_x, current_y, label=f'Agent {i+1} Path', linewidth=1, color=colors_path[i])
     else:
         axs[0, 1].plot(x_new, y_new, 'b-', label=path.name + ' Path', linewidth=1)
@@ -119,6 +119,36 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
         axs[0, 1].plot(source[0], source[1], 'yX', markersize=10, label='Estimated Source')
 
     axs[0, 1].set_facecolor(cmap(0))
+
+    # save the axs[0, 1] as a separate image for each run
+    for i in range(1, rounds + 1):
+        top_corner_fig, axs_top = plt.subplots(1, 1, figsize=(10, 8), constrained_layout=True)
+        top_corner_fig.suptitle(strategy_title, fontsize=16)
+        # copy axs[0, 1] to the top_corner_fig
+        x_new, y_new = path_list['full_path'][i-1]
+        axs_top.contourf(scenario.X, scenario.Y, path_list['z_pred'][i-1], levels=levels, cmap=cmap, norm=colors.BoundaryNorm(levels, ncolors=cmap.N, clip=True))
+        if hasattr(path, 'num_agents'):
+            for j in range(path.num_agents):
+                current_x, current_y = np.array(path_list['agents_full_path'][i-1][j]).reshape(-1, 2).T
+                axs_top.plot(current_x, current_y, label=f'Agent {i+1} Path', linewidth=1, color=colors_path[j])
+        else:
+            axs_top.plot(x_new, y_new, 'b-', label=path.name + ' Path', linewidth=1)
+        axs_top.plot(path_list['obs_wp'][i-1][:, 0], path_list['obs_wp'][i-1][:, 1], 'ro', markersize=1)  # Waypoints
+        for source in scenario.sources:
+            axs_top.plot(source[0], source[1], 'rX', markersize=10, label='Source')
+        for source in source_list['source'][i-1]:
+            axs_top.plot(source[0], source[1], 'yX', markersize=10, label='Estimated Source')
+        axs_top.set_facecolor(cmap(0))
+
+        axs_top.set_title('Predicted Field')
+        axs_top.set_xlabel('x')
+        axs_top.set_ylabel('y')
+        # save it to subfolder /top_corner whitint the current run folder
+        # create dir if not present
+        if not os.path.exists(f'../{folder}/top_corner'):
+            os.makedirs(f'../{folder}/top_corner')
+
+        top_corner_fig.savefig(f'../{folder}/top_corner/{os.path.basename(save_fig_title).replace(".png", "_predicted_field_run_" + str(i) + ".png")}')
 
     # Plot Uncertainty Field
     std_reshaped = std.reshape(scenario.X.shape)
@@ -154,7 +184,7 @@ def rrt_helper_plot(save_fig_title, strategy_title, scenario, path, colors_path,
         fig.suptitle(f'Additional Insights for {strategy_title}', fontsize=16)
 
         # Plot all trees and the final chosen path
-        for tree_root in path.trees:
+        for tree_root in path.trees.trees:
             plot_tree_node(tree_root, axs[0], color='lightgray')
         # is has attribute num_agents, plot each agent path with a different color
         if hasattr(path, 'num_agents'):
@@ -381,116 +411,77 @@ def source_distance(scenario, source_list, save_fig_title=None, show=False):
     plt.close()
 
 """
-Estimate Sources 
+Estimate Sources
 Citation:
-M. Morelande, B. Ristic and A. Gunatilaka, "Detection and parameter estimation of multiple radioactive sources," 
-2007 10th International Conference on Information Fusion, Quebec, QC, Canada, 2007, pp. 1-7, doi: 10.1109/ICIF.2007.4408094. 
+M. Morelande, B. Ristic and A. Gunatilaka, "Detection and parameter estimation of multiple radioactive sources,"
+2007 10th International Conference on Information Fusion, Quebec, QC, Canada, 2007, pp. 1-7, doi: 10.1109/ICIF.2007.4408094.
 """
 def poisson_log_likelihood(theta, obs_wp, obs_vals, lambda_b, M):
     """
     Calculate the Poisson log-likelihood for given source parameters and observations.
-
-    Parameters:
-    theta (array): Flattened array of source parameters (x, y, intensity).
-    obs_wp (array): Array of observation points (x, y).
-    obs_vals (array): Observed counts at each observation point.
-    lambda_b (float): Background radiation level.
-    M (int): Number of sources.
-
-    Returns:
-    float: Negative log-likelihood value.
     """
+    obs_wp = np.array(obs_wp)  # Ensure obs_wp is a NumPy array
     converted_obs_vals = np.round(obs_vals).astype(int)  # Ensure integer counts
-    log_likelihood = 0.0
     sources = theta.reshape((M, 3)) if len(theta) == 3 * M else np.array([theta])
-
-    for obs_index, (x_obs, y_obs) in enumerate(obs_wp):
-        lambda_j = lambda_b
-        for source in sources:
-            x_source, y_source, source_intensity = source
-            d_ji = np.sqrt((x_obs - x_source)**2 + (y_obs - y_source)**2)
-            alpha_i = source_intensity 
-            lambda_j += alpha_i / max(d_ji**2, 1e-6)
-
-        log_pmf = poisson.logpmf(converted_obs_vals[obs_index], lambda_j)
-        log_likelihood += log_pmf
-
+    d_ji = np.sqrt((obs_wp[:, None, 0] - sources[:, 0])**2 + (obs_wp[:, None, 1] - sources[:, 1])**2)
+    alpha_i = sources[:, 2]
+    lambda_j = lambda_b + np.sum(alpha_i / np.maximum(d_ji**2, 1e-6), axis=1)
+    log_pmf = poisson.logpmf(converted_obs_vals, lambda_j)
+    log_likelihood = np.sum(log_pmf)
     return -log_likelihood
 
-def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, M, n_samples, s_stages, prior_dist, alpha=0.5):
-    gammas = np.linspace(0.01, 1.0, s_stages)  # Define gamma values for progressive correction
-        
+def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, M, n_samples, s_stages, prior_dist, scenario, alpha=0.5):
+    gammas = np.linspace(0.1, 1.0, s_stages)
     theta_samples = np.column_stack([dist.rvs(n_samples) for dist in prior_dist])
-    theta_samples_prev = theta_samples.copy()
-
     def calc_weights(theta, gamma, obs_wp, obs_vals, lambda_b, M):
-        n_samples = len(theta)
-        log_weights = np.zeros(n_samples)
-        for i in range(n_samples):
-            sample_log_likelihood = -poisson_log_likelihood(theta[i], obs_wp, obs_vals, lambda_b, M)
-            log_weights[i] = gamma * sample_log_likelihood
-            
-        weights = np.exp(log_weights - np.max(log_weights))  # Normalize the weights
+        sample_log_likelihood = -np.array([poisson_log_likelihood(theta[i], obs_wp, obs_vals, lambda_b, M) for i in range(len(theta))])
+        log_weights = gamma * sample_log_likelihood
+        max_log_weights = np.max(log_weights)
+        weights = np.exp(log_weights - max_log_weights)
         weights /= np.sum(weights)
         return weights
-
-    for k in range(s_stages):
-        gamma = gammas[k]
-        weights = calc_weights(theta_samples_prev, gamma, obs_wp, obs_vals, lambda_b, M)
+    for gamma in gammas:
+        weights = calc_weights(theta_samples, gamma, obs_wp, obs_vals, lambda_b, M)
         if np.any(np.isnan(weights)):
-            print("Warning: NaN weights encountered. Skipping stage.")
-            continue
-        indices = np.random.choice(n_samples, size=n_samples, p=weights, replace=True)
-        resampled_samples = theta_samples[indices, :]
+            print("Warning: NaN weights encountered. Repeating the sampling process.")
+            return importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, M, n_samples, s_stages, prior_dist, scenario, alpha)
+            
 
+        indices = np.random.choice(n_samples, size=n_samples, p=weights)
+        resampled_samples = theta_samples[indices]
         means = np.mean(resampled_samples, axis=0)
         covariances = np.cov(resampled_samples, rowvar=False)
-
-        perturbations = multivariate_normal.rvs(mean=means, cov=covariances*alpha, size=n_samples)
-        # make sure they are within the bounds for x, y, and intensity
-        perturbations[:, 0] = np.clip(perturbations[:, 0], 0, 40)
-        perturbations[:, 1] = np.clip(perturbations[:, 1], 0, 40)
-        perturbations[:, 2] = np.clip(perturbations[:, 2], 1e4, 1e5)
-        
+        perturbations = multivariate_normal.rvs(mean=means, cov=covariances * alpha, size=n_samples)
+        perturbations[:, 0] = np.clip(perturbations[:, 0], 0, scenario.workspace_size[0])
+        perturbations[:, 1] = np.clip(perturbations[:, 1], 0, scenario.workspace_size[1])
+        perturbations[:, 2] = np.clip(perturbations[:, 2], scenario.intensity_range[0], scenario.intensity_range[1])
         theta_samples = perturbations
-        theta_samples_prev = theta_samples.copy()
-
     theta_estimate = np.mean(theta_samples, axis=0)
     return theta_estimate, theta_samples
-  
+
 def calculate_bic(log_likelihood, num_params, num_data_points):
     """Calculate the Bayesian Information Criterion."""
-    bic =  2 * log_likelihood + num_params * np.log(num_data_points)
-    return bic
+    return 2 * log_likelihood + num_params * np.log(num_data_points)
 
-def estimate_sources_bayesian(obs_wp, obs_vals, lambda_b, max_sources, n_samples, s_stages):
+def estimate_sources_bayesian(obs_wp, obs_vals, lambda_b, max_sources, n_samples, s_stages, scenario):
     best_bic = -np.inf
     best_estimate = None
     best_M = 0
     for M in range(1, max_sources + 1):
-        prior_x = uniform(loc=0, scale=40)
-        prior_y = uniform(loc=0, scale=40)
-        prior_intensity = uniform(loc=1e4, scale=1e5)
+        prior_x = uniform(loc=0, scale=scenario.workspace_size[0])
+        prior_y = uniform(loc=0, scale=scenario.workspace_size[1])
+        prior_intensity = uniform(loc=scenario.intensity_range[0], scale=scenario.intensity_range[1])
         prior_dist = [prior_x, prior_y, prior_intensity] * M
-
         theta_estimate, theta_samples = importance_sampling_with_progressive_correction(
-            obs_wp,
-            obs_vals,
-            lambda_b,
-            M,
-            n_samples,
-            s_stages,
-            prior_dist
+            obs_wp, obs_vals, lambda_b, M, n_samples, s_stages, prior_dist, scenario
         )
         log_likelihood = -poisson_log_likelihood(theta_estimate, obs_wp, obs_vals, lambda_b, M)
         num_params = 3 * M
         bic = calculate_bic(log_likelihood, num_params, len(obs_vals))
-        # print(f"M = {M}, BIC = {bic}")
         if bic > best_bic:
             best_bic = bic
             best_estimate = theta_estimate
             best_M = M
-
     return best_estimate, best_M, best_bic
 
 def create_gif(save_dir, output_filename="sources_estimation_test_0.gif"):
@@ -596,7 +587,7 @@ if __name__ == "__main__":
             obs_vals_send, obs_wp_send = current_obs_vals[:iter_val], current_obs_wp[:iter_val]
             
             estimated_locs, estimated_num_sources, bic = estimate_sources_bayesian(
-                obs_wp_send, obs_vals_send, lambda_b, max_sources, n_samples, s_stages
+                obs_wp_send, obs_vals_send, lambda_b, max_sources, n_samples, s_stages, scenario
                   )
             
             if iteration_counter == 1 or bic > max(bic_vals):

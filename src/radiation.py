@@ -37,6 +37,7 @@ class RadiationField:
         self.r_d = 0.5  # Detector radius
         self.T = 100  # Transmission factor
         self.workspace_size = workspace_size
+        self.intensity_range = intensity_range
         self.x = np.linspace(0, workspace_size[0], 200)
         self.y = np.linspace(0, workspace_size[1], 200)
         self.X, self.Y = np.meshgrid(self.x, self.y)
@@ -66,6 +67,8 @@ class RadiationField:
         rand_y = np.random.uniform(0, workspace_size[1], num_sources)
         rand_A = np.random.uniform(*intensity_range, num_sources)
         sources = np.column_stack((rand_x, rand_y, rand_A))
+        # revert seed   
+        np.random.seed(None)
         return sources.tolist()  
 
     def update_source(self, source_index, new_x, new_y, new_A):

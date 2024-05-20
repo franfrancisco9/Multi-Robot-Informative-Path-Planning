@@ -139,31 +139,18 @@ def point_source_gain_all(self, node, agent_idx):
             theta_t = np.arctan2(node.point[1] - node.parent.point[1], node.point[0] - node.parent.point[0])
             return np.exp(theta_t**2 / 0.1)
         return 0
-    # define a penalty that is applied if more than 5 observation points are in a rectangle that goes in the direction of the parent node as to 
-    # promot exploration
     def exploitation_penalty(node):
-        if node.parent:
-            x_t, y_t = node.point
-            x_t_1, y_t_1 = node.parent.point
-            # Define the rectangle
-            x_min = min(x_t, x_t_1)
-            x_max = max(x_t, x_t_1)
-            y_min = min(y_t, y_t_1)
-            y_max = max(y_t, y_t_1)
-            count = 0
-            for obs_point in self.agents_obs_wp[agent_idx]:
-                if x_min <= obs_point[0] <= x_max and y_min <= obs_point[1] <= y_max:
-                    count += 1
-            if count > 5:
-                return np.exp(-1 * count)
-        return 0
-    # If there are already obs_wp for the other agents, give a severe penalty to the node that is within 5m of the observation point of the other agent
-    for i in range(self.num_agents):
-        if i != agent_idx:
-            for obs_point in self.agents_obs_wp[i]:
-                if np.linalg.norm(node.point - obs_point) < self.d_waypoint_distance:
-                    return -np.inf
-            
+        # If the node has 5 or more obs_wp from other agents in a d_waypoint_distance radius, return 0
+        # return a np.exp(-n_obs_wp^exploit) with n_obs_wp = number of obs_wp in a d_waypoint_distance radius
+        if len(self.obs_wp) > 0:
+            n_obs_wp = 0
+            for i in range(len(self.agent_positions)):
+                if i != agent_idx:
+                    n_obs_wp += len([obs_wp for obs_wp in self.agents_obs_wp[i] if np.linalg.norm(node.point - obs_wp) < self.d_waypoint_distance])
+            if n_obs_wp >= 5:
+                return 0
+            return np.exp(-n_obs_wp)
+        
     final_gain = 0
     current_node = node
     while current_node.parent:
@@ -195,7 +182,7 @@ def rrt_tree_generation(self, budget_portion, agent_idx):
             if distance_travelled >= budget_portion:
                 break
 
-        self.agents_trees[agent_idx].add(self.root)
+        self.agents_trees[agent_idx].add(self.agents_roots[agent_idx])
 
 # RRT Star Tree Generic generation strategy
 def rrt_star_tree_generation(self, budget_portion, agent_idx):
@@ -237,7 +224,7 @@ def rrt_star_tree_generation(self, budget_portion, agent_idx):
             rewire(X_near, x_new)
             if distance_travelled >= budget_portion:
                 break
-    self.agents_trees[agent_idx].add(self.root)  # Consider all nodes for plotting
+    self.agents_trees[agent_idx].add(self.agents_roots[agent_idx])
 
 # RIG Tree Generic generation strategy with point source gain calculation
 def rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_source_gain_no_penalties):
@@ -270,7 +257,7 @@ def rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_sou
             if distance_travelled >= budget_portion:
                 break
 
-        self.agents_trees[agent_idx].add(self.root)
+        self.agents_trees[agent_idx].add(self.agents_roots[agent_idx])
 
 # GP Information Updated Generic Strategy
 def gp_information_update(self):
@@ -283,7 +270,9 @@ def gp_information_update(self):
     """
     self.measurements = sum((agent_measurements for agent_measurements in self.agents_measurements), [])
     self.obs_wp = sum((agent_wp for agent_wp in self.agents_obs_wp), [])
-    self.scenario.gp.fit(self.obs_wp, self.measurements)
+    # every 10 observation
+    if len(self.measurements) % 10 == 0 and len(self.measurements) > 0:
+        self.scenario.gp.fit(self.obs_wp, self.measurements)
 
 # Source Metric Information Updated Generic Strategy
 def source_metric_information_update(self):
@@ -296,13 +285,15 @@ def source_metric_information_update(self):
     """
     self.measurements = sum((agent_measurements for agent_measurements in self.agents_measurements), [])
     self.full_path = sum((agent_path for agent_path in self.agents_full_path), [])
-    estimates, _, bic = estimate_sources_bayesian(
-        self.full_path, self.measurements, self.lambda_b,
-        self.max_sources, self.n_samples, self.s_stages
-    )
-    if bic > self.best_bic:
-        self.best_bic = bic
-        self.best_estimates = estimates.reshape((-1, 3))
+    # every 5 observation
+    if len(self.measurements) % 5 == 0 and len(self.measurements) > 0:
+        estimates, _, bic = estimate_sources_bayesian(
+            self.full_path, self.measurements, self.lambda_b,
+            self.max_sources, self.n_samples, self.s_stages, self.scenario
+        )
+        if bic > self.best_bic:
+            self.best_bic = bic
+            self.best_estimates = estimates.reshape((-1, 3))
     
 # Generic Random Path Selection Strategy
 def random_path_selection(self, agent_idx):
@@ -409,6 +400,9 @@ class InformativeRRTBaseClass():
         self.trees = TreeCollection()
         self.uncertainty_reduction = []
         self.time_taken = 0
+        self.new_scenario = None
+        self.Z_pred = None
+        self.budget = [budget] * num_agents
 
         # Source Metric Parameters
         self.n_samples = n_samples
@@ -426,21 +420,21 @@ class InformativeRRTBaseClass():
         self.agents_measurements = [[] for _ in range(num_agents)]
         self.agents_full_path = [[] for _ in range(num_agents)]
         self.tree_nodes = [[] for _ in range(num_agents)]
+        self.agents_roots = [None] * num_agents
 
     def initialize_trees(self, start_position, agent_idx):
-        self.root = InformativeTreeNode(start_position)
-        self.current_position = start_position
-        self.tree_nodes[agent_idx] = [self.root]
+        self.agents_roots[agent_idx] = InformativeTreeNode(start_position)
+        self.tree_nodes[agent_idx] = [self.agents_roots[agent_idx]]
+        self.trees.add(self.agents_roots[agent_idx])
 
     def run(self):
         """
-        Generic run method for the Informative RRT Path Planning algorithm
+        Generic run method for  the Informative RRT Path Planning algorithm
         """
         budget_portion = [budget / self.budget_iter for budget in self.budget]
 
         for i in range(self.num_agents):
             self.initialize_trees(self.agent_positions[i], i)
-            self.trees.add(self.root)
         start_time = time.time()
         # self.plot_agents_paths_threaded()
         with tqdm(total=sum(self.budget), desc="Running " + str(self.num_agents) + " Agent " + self.name) as pbar:
@@ -454,10 +448,10 @@ class InformativeRRTBaseClass():
                         self.update_observations_and_model(path, i)
                         self.agents_full_path[i].extend(path)
                         self.budget[i] -= budget_spent
+
                         pbar.update(budget_spent)
-                        if path:
+                        if len(path) > 0 and self.budget[i] > 0:
                             self.initialize_trees(path[-1], i)
-                            self.trees.add(self.root)
                 self.information_update()
         self.time_taken = time.time() - start_time
         return self.finalize_all_agents()
@@ -549,17 +543,17 @@ class InformativeRRTBaseClass():
 
         if hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
             num_sources = len(self.best_estimates)
-            new_scenario = RadiationField(num_sources=num_sources, workspace_size=self.scenario.workspace_size,
+            self.new_scenario = RadiationField(num_sources=num_sources, workspace_size=self.scenario.workspace_size,
                                         intensity_range=(1e4, 1e5))
             for i, estimate in enumerate(self.best_estimates):
-                new_scenario.update_source(i, *estimate)
-            print("Best Estimates: ", self.best_estimates)
-            _ , std = self.scenario.predict_spatial_field(self.obs_wp, np.array(self.measurements))
-            Z_pred = new_scenario.g_truth
+                self.new_scenario.update_source(i, *estimate)
+            print("\nBest Estimates: ", self.best_estimates, "\n")
+            std = np.zeros_like(self.scenario.g_truth)
+            self.Z_pred = self.new_scenario.g_truth
         else:
-            Z_pred, std = self.scenario.predict_spatial_field(self.obs_wp, np.array(self.measurements))
+            self.Z_pred, std = self.scenario.predict_spatial_field(self.obs_wp, np.array(self.measurements))
         
-        return Z_pred, std
+        return self.Z_pred, std
     def tree_generation(self, budget_portion, agent_idx):
         raise NotImplementedError("tree_generation method must be implemented in the subclass")
     

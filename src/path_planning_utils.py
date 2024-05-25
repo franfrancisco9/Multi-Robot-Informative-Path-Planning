@@ -122,7 +122,7 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
 
     # save the axs[0, 1] as a separate image for each run
     for i in range(1, rounds + 1):
-        top_corner_fig, axs_top = plt.subplots(1, 1, figsize=(10, 8), constrained_layout=True)
+        top_corner_fig, axs_top = plt.subplots(1, 1, figsize=(20, 8), constrained_layout=True)
         top_corner_fig.suptitle(strategy_title, fontsize=16)
         # copy axs[0, 1] to the top_corner_fig
         x_new, y_new = path_list['full_path'][i-1]
@@ -149,7 +149,7 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
             os.makedirs(f'../{folder}/top_corner')
 
         top_corner_fig.savefig(f'../{folder}/top_corner/{os.path.basename(save_fig_title).replace(".png", "_predicted_field_run_" + str(i) + ".png")}')
-
+        plt.close(top_corner_fig)
     # Plot Uncertainty Field
     std_reshaped = std.reshape(scenario.X.shape)
     cs_uncertainty = axs[1, 0].contourf(scenario.X, scenario.Y, std_reshaped, cmap='Reds')
@@ -162,6 +162,19 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
     axs[1, 1].set_xlabel('Metric')
     axs[1, 1].set_ylabel('Value')
     axs[1, 1].grid(True)
+
+    # save RMSE and WRMSE as a single plot to a subfolder /metrics within the current run folder
+    if not os.path.exists(f'../{folder}/metrics'):
+        os.makedirs(f'../{folder}/metrics')
+    metrics_fig, axs_metrics = plt.subplots(1, 1, figsize=(20, 8), constrained_layout=True)
+    metrics_fig.suptitle(strategy_title, fontsize=16)
+    axs_metrics.boxplot([rmse_list, wrmse_list], labels=['RMSE', 'WRMSE'])
+    axs_metrics.set_title('RMSE and WRMSE Evolution')
+    axs_metrics.set_xlabel('Metric')
+    axs_metrics.set_ylabel('Value')
+    axs_metrics.grid(True)
+    metrics_fig.savefig(f'../{folder}/metrics/{os.path.basename(save_fig_title).replace(".png", "_metrics.png")}')
+    plt.close(metrics_fig)
 
     # Show or save the plot as needed
     if save:

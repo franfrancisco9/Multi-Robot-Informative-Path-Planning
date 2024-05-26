@@ -452,7 +452,10 @@ def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, 
         log_weights = gamma * sample_log_likelihood
         max_log_weights = np.max(log_weights)
         weights = np.exp(log_weights - max_log_weights)
-        weights /= np.sum(weights)
+        sum_weights = np.sum(weights)
+        if sum_weights == 0 or np.isnan(sum_weights):
+            return np.full_like(weights, np.nan)
+        weights /= sum_weights
         return weights
     for gamma in gammas:
         weights = calc_weights(theta_samples, gamma, obs_wp, obs_vals, lambda_b, M)

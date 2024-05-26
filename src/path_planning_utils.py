@@ -197,8 +197,9 @@ def rrt_helper_plot(save_fig_title, strategy_title, scenario, path, colors_path,
         fig.suptitle(f'Additional Insights for {strategy_title}', fontsize=16)
 
         # Plot all trees and the final chosen path
+        colors_tree = ["red", "blue", "green", "orange", "purple", "brown", "pink", "gray", "olive", "cyan"]
         for tree_root in path.trees.trees:
-            plot_tree_node(tree_root, axs[0], color='lightgray')
+            plot_tree_node(tree_root, axs[0], color=colors_tree[path.trees.trees.index(tree_root) % len(colors_tree)])
         # is has attribute num_agents, plot each agent path with a different color
         if hasattr(path, 'num_agents'):
             for i in range(path.num_agents):

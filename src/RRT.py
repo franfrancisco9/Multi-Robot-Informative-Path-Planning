@@ -40,15 +40,18 @@ def point_source_gain_only_distance_penalty(self, node, agent_idx):
     def sources_gain(node):
         x_t, y_t = node.point
         point_source_gain = 0
-        for source in self.best_estimates:
-            x_k, y_k, intensity = source
-            d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
-            point_source_gain += intensity / d_src**2
-        return point_source_gain * distance_penalty(node)
+        if hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
+            for source in self.best_estimates:
+                x_k, y_k, intensity = source
+                d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
+                point_source_gain += intensity / d_src**2
+            return point_source_gain * distance_penalty(node) * rotation_penalty(node) * exploitation_penalty(node)
+        else:
+            return 0
 
     def distance_penalty(node):
         if node.parent:
-            return np.exp(-0.1 * np.linalg.norm(node.point - node.parent.point))
+            return np.exp(-500 * np.linalg.norm(node.point - node.parent.point))
         return 1
 
     final_gain = 0
@@ -56,27 +59,33 @@ def point_source_gain_only_distance_penalty(self, node, agent_idx):
     while current_node.parent:
         final_gain += sources_gain(current_node) 
         current_node = current_node.parent
+
+    if final_gain < 0:
+        return 0
     return final_gain
 
 def point_source_gain_distance_rotation_penalty(self, node, agent_idx):
     def sources_gain(node):
         x_t, y_t = node.point
         point_source_gain = 0
-        for source in self.best_estimates:
-            x_k, y_k, intensity = source
-            d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
-            point_source_gain += intensity / d_src**2
-        return point_source_gain * distance_penalty(node) * rotation_penalty(node)
+        if hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
+            for source in self.best_estimates:
+                x_k, y_k, intensity = source
+                d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
+                point_source_gain += intensity / d_src**2
+            return point_source_gain * distance_penalty(node) * rotation_penalty(node) * exploitation_penalty(node)
+        else:
+            return 0
 
     def distance_penalty(node):
         if node.parent:
-            return np.exp(-0.1 * np.linalg.norm(node.point - node.parent.point))
+            return np.exp(-500 * np.linalg.norm(node.point - node.parent.point))
         return 1
 
     def rotation_penalty(node):
         if node.parent:
             theta_t = np.arctan2(node.point[1] - node.parent.point[1], node.point[0] - node.parent.point[0])
-            return np.exp(-(theta_t**2) / 0.1)
+            return np.exp(-10*(theta_t**2) / 0.1)
         return 1
 
     final_gain = 0
@@ -84,8 +93,10 @@ def point_source_gain_distance_rotation_penalty(self, node, agent_idx):
     while current_node.parent:
         final_gain += sources_gain(current_node) 
         current_node = current_node.parent
-    return final_gain
 
+    if final_gain < 0:
+        return 0
+    return final_gain
 def point_source_gain_all(self, node, agent_idx):
     def sources_gain(node):
         x_t, y_t = node.point

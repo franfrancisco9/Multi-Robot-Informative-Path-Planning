@@ -45,7 +45,7 @@ def point_source_gain_only_distance_penalty(self, node, agent_idx):
                 x_k, y_k, intensity = source
                 d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
                 point_source_gain += intensity / d_src**2
-            return point_source_gain * distance_penalty(node) * rotation_penalty(node) * exploitation_penalty(node)
+            return point_source_gain * distance_penalty(node) 
         else:
             return 0
 
@@ -73,7 +73,7 @@ def point_source_gain_distance_rotation_penalty(self, node, agent_idx):
                 x_k, y_k, intensity = source
                 d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
                 point_source_gain += intensity / d_src**2
-            return point_source_gain * distance_penalty(node) * rotation_penalty(node) * exploitation_penalty(node)
+            return point_source_gain * distance_penalty(node) * rotation_penalty(node) 
         else:
             return 0
 
@@ -480,9 +480,9 @@ class RRTRIG_PointSourceInformative_Distance_SourceMetric_PathPlanning(Informati
     def tree_generation(self, budget_portion, agent_idx):
         rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_source_gain_only_distance_penalty)
 
-    def path_selection(self, agent_idx):
-        return informative_source_metric_path_selection(self, agent_idx)
-
+    def path_selection(self, agent_idx, current_position=None):
+        return informative_source_metric_path_selection(self, agent_idx, current_position)
+    
     def information_update(self):
         source_metric_information_update(self)
 

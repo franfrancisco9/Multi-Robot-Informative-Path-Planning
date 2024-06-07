@@ -98,6 +98,16 @@ def point_source_gain_distance_rotation_penalty(self, node, agent_idx):
         return 0
     return final_gain
 def point_source_gain_all(self, node, agent_idx):
+    # generate kd trees for each agent
+    trees_obs_wp = []
+    for i, obs_wp in enumerate(self.agents_obs_wp):
+        if i != agent_idx:
+            if len(obs_wp) > 0:
+                trees_obs_wp.append(KDTree(obs_wp))
+            else:
+                trees_obs_wp.append(None)
+        else:
+            trees_obs_wp.append(None)
     def sources_gain(node):
         x_t, y_t = node.point
         point_source_gain = 0
@@ -236,59 +246,85 @@ def random_path_selection(self, agent_idx, current_position=None):
     selected_leaf = np.random.choice(leaf_nodes)
     return trace_path_to_root(selected_leaf)
 
-def informative_source_metric_path_selection(self, agent_idx, current_position=None):   
+def informative_source_metric_path_selection(self, agent_idx, current_position=None):
     """
-    Generic path selection strategy for Multi-Agent Informative Source Metric RRT Path Planning algorithms
+    Generic path selection strategy for Multi-Agent Informative Source Metric RRT Path Planning algorithms.
 
     Parameters:
     - self: Assumes a class that inherits from InformativeRRTBaseClass
     - agent_idx: The index of the agent in the multi-agent system
+    - current_position: The current position of the agent
 
+    Returns:
+    - path: The selected path for the agent as a list of points.
     """
+    budget = self.budget[agent_idx]
     all_nodes = self.tree_nodes[agent_idx]
     if not all_nodes:
         return []
 
-    if self.best_estimates.size == 0:
-        selected_node = np.random.choice(all_nodes)
+    def trace_path_to_root(node):
+        """Helper function to trace the path from the given node to the root."""
+        path = []
+        while node is not None:
+            path.append(node)
+            node = node.parent  # Assuming each node has a 'parent' attribute
+        return path[::-1]  # Reverse the path to start from the root
+
+    def find_best_node(nodes, exclude_set):
+        """Find the best node not in the exclude set based on information."""
+        candidates = [node for node in nodes]
+        # if not candidates:
+        #     return None
+        return max(candidates, key=lambda node: node.information)
+
+    if current_position is None:
+        current_node = np.random.choice(all_nodes)
     else:
-        selected_node = max(all_nodes, key=lambda node: node.information)
-
-    if current_position is not None:
         current_node = min(all_nodes, key=lambda node: np.linalg.norm(node.point - current_position))
-        # Ensure we trace the path from the current node to the selected node without jumping to the root
-        path_to_current = trace_path_to_root(current_node)
-        path_to_selected = trace_path_to_root(selected_node)
-        # print("Path to Current: ", [node for node in path_to_current])
-        # print("Path to Selected: ", [node for node in path_to_selected])
-        # Find the highest index common node by comparing node points
-        common_node = None
-        for node1 in reversed(path_to_current):
-            for node2 in reversed(path_to_selected):
-                if np.array_equal(node1, node2):
-                    common_node = node1
-                    break
-            if common_node is not None:
+
+    path = [current_node]
+    visited_nodes = set(path)
+    # current_budget = budget if budget is not None else float('inf')
+
+    # while current_budget > 0:
+    best_node = find_best_node(all_nodes, visited_nodes)
+    if not best_node:
+        return [node.point for node in path]
+
+    path_to_best = trace_path_to_root(best_node)
+    path_to_current = trace_path_to_root(current_node)
+
+    # Find the highest index common node by comparing node points
+    common_node = None
+    for node1 in reversed(path_to_current):
+        for node2 in reversed(path_to_best):
+            if np.array_equal(node1.point, node2.point):
+                common_node = node1
                 break
-        if common_node is not None:
-            # print("Common Node: ", common_node)
-            index_current = next(i for i, node in enumerate(path_to_current) if np.array_equal(node, common_node))
-            index_selected = next(i for i, node in enumerate(path_to_selected) if np.array_equal(node, common_node))
-            first_part = []
-            for node in reversed(path_to_current[index_current-1:]):
-                first_part.append(node) 
-            second_part = []
-            for node in path_to_selected[index_selected:]:
-                second_part.append(node)
-            # print("First Part: ", first_part)
-            # print("Second Part: ", second_part)
-            path = first_part + second_part
-        else:
-            path = path_to_current + path_to_selected
-        return [node for node in path]
 
-    return [node for node in trace_path_to_root(selected_node)]
+    if common_node is not None:
+        index_current = next(i for i, node in enumerate(path_to_current) if np.array_equal(node.point, common_node.point))
+        index_best = next(i for i, node in enumerate(path_to_best) if np.array_equal(node.point, common_node.point))
+        first_part = list(reversed(path_to_current[index_current + 1:]))  # skip the common node in the first part
+        second_part = path_to_best[index_best:]  # skip the common node in the second part
+        segment = first_part + second_part  # avoid duplicating common node
+    else:
+        segment = [current_node] + [best_node]  # Directly go from current position to best node if no common node is found
 
+    for node in segment:
+        if current_node != node:
+            # cost_to_next = np.linalg.norm(node.point - current_node.point)
+            # if current_budget - cost_to_next < 0:
+            #     path.append(current_node)
+            #     return [node.point for node in path]
+            # current_budget -= cost_to_next
+            path.append(node)
+            current_node = node
+            visited_nodes.add(node)
+
+    path.append(current_node)
+    return [node.point for node in path]
 
 def bias_beta_path_selection(self, agent_idx, current_position=None):
     leaf_nodes = [node for node in self.tree_nodes[agent_idx] if not node.children]
@@ -373,11 +409,12 @@ class InformativeRRTBaseClass():
                         self.update_observations_and_model(path, i)
                         self.agents_full_path[i].extend(path)
                         self.budget[i] -= budget_spent
-
+                        if self.budget[i] < budget_portion[i]:
+                            self.budget[i] = 0
                         pbar.update(budget_spent)
                         if len(path) > 0 and self.budget[i] > 0:
                             self.initialize_trees(path[-1], i)
-                self.information_update()
+                        self.information_update()
         self.time_taken = time.time() - start_time
         return self.finalize_all_agents()
 

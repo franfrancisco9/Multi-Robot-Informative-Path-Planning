@@ -4,6 +4,9 @@ import numpy as np
 import os 
 from scipy.stats import poisson, uniform, norm, multivariate_normal
 import warnings
+from typing import Tuple, List, Callable
+from radiation import RadiationField
+
 # Ignore for nanmean.
 warnings.simplefilter("ignore", category=RuntimeWarning)
 
@@ -156,8 +159,8 @@ def helper_plot(scenario, scenario_number, z_true, z_pred, std, path, rmse_list,
     axs[1, 0].set_title('Uncertainty Field')
     axs[1, 0].set_facecolor('pink')
 
-    # Plot RMSE and WRMSE Box plots to show evolution accross rounds
-    axs[1, 1].boxplot([rmse_list, wrmse_list], labels=['RMSE', 'WRMSE'])
+    # Plot RMSE and WRMSE Box plots to show evolution accross rounds with no outliers
+    axs[1, 1].boxplot([rmse_list, wrmse_list], labels=['RMSE', 'WRMSE'], whis=50)
     axs[1, 1].set_title('RMSE and WRMSE Evolution')
     axs[1, 1].set_xlabel('Metric')
     axs[1, 1].set_ylabel('Value')
@@ -430,75 +433,164 @@ Citation:
 M. Morelande, B. Ristic and A. Gunatilaka, "Detection and parameter estimation of multiple radioactive sources,"
 2007 10th International Conference on Information Fusion, Quebec, QC, Canada, 2007, pp. 1-7, doi: 10.1109/ICIF.2007.4408094.
 """
-def poisson_log_likelihood(theta, obs_wp, obs_vals, lambda_b, M):
+def poisson_log_likelihood(
+    theta: np.ndarray, 
+    obs_wp: np.ndarray, 
+    obs_vals: np.ndarray, 
+    lambda_b: float, 
+    M: int
+) -> float:
     """
     Calculate the Poisson log-likelihood for given source parameters and observations.
+    
+    Parameters:
+    - theta: Source parameters (flattened array of [x, y, alpha] for each source).
+    - obs_wp: Observation waypoints, array of shape (num_observations, 2).
+    - obs_vals: Observed values (counts), array of shape (num_observations,).
+    - lambda_b: Background radiation rate.
+    - M: Number of sources.
+
+    Returns:
+    - Negative log-likelihood value.
     """
     obs_wp = np.array(obs_wp)  # Ensure obs_wp is a NumPy array
     converted_obs_vals = np.round(obs_vals).astype(int)  # Ensure integer counts
-    sources = theta.reshape((M, 3)) if len(theta) == 3 * M else np.array([theta])
+    sources = theta.reshape((M, 3))
+    
     d_ji = np.sqrt((obs_wp[:, None, 0] - sources[:, 0])**2 + (obs_wp[:, None, 1] - sources[:, 1])**2)
     alpha_i = sources[:, 2]
     lambda_j = lambda_b + np.sum(alpha_i / np.maximum(d_ji**2, 1e-6), axis=1)
+    
     log_pmf = poisson.logpmf(converted_obs_vals, lambda_j)
     log_likelihood = np.sum(log_pmf)
+    
     return -log_likelihood
 
-def importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, M, n_samples, s_stages, prior_dist, scenario, alpha=0.5):
+def importance_sampling_with_progressive_correction(
+    obs_wp: np.ndarray, 
+    obs_vals: np.ndarray, 
+    lambda_b: float, 
+    M: int, 
+    n_samples: int, 
+    s_stages: int, 
+    prior_dist: List[Callable], 
+    scenario: 'Scenario', 
+    alpha: float = 0.5
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Perform importance sampling with progressive correction to estimate source parameters.
+    
+    Parameters:
+    - obs_wp: Observation waypoints, array of shape (num_observations, 2).
+    - obs_vals: Observed values (counts), array of shape (num_observations,).
+    - lambda_b: Background radiation rate.
+    - M: Number of sources.
+    - n_samples: Number of samples.
+    - s_stages: Number of stages.
+    - prior_dist: List of prior distributions.
+    - scenario: Scenario object containing workspace size and intensity range.
+    - alpha: Perturbation factor.
+    
+    Returns:
+    - theta_estimate: Estimated source parameters.
+    - theta_samples: Samples of source parameters.
+    """
     gammas = np.linspace(0.1, 1.0, s_stages)
     theta_samples = np.column_stack([dist.rvs(n_samples) for dist in prior_dist])
-    def calc_weights(theta, gamma, obs_wp, obs_vals, lambda_b, M):
+
+    def calc_weights(
+        theta: np.ndarray, 
+        gamma: float, 
+        obs_wp: np.ndarray, 
+        obs_vals: np.ndarray, 
+        lambda_b: float, 
+        M: int
+    ) -> np.ndarray:
         sample_log_likelihood = -np.array([poisson_log_likelihood(theta[i], obs_wp, obs_vals, lambda_b, M) for i in range(len(theta))])
         log_weights = gamma * sample_log_likelihood
         max_log_weights = np.max(log_weights)
-        weights = np.exp(log_weights - max_log_weights)
+        weights = np.exp(log_weights - max_log_weights)  # Avoid underflow
         sum_weights = np.sum(weights)
-        if sum_weights == 0 or np.isnan(sum_weights):
-            return np.full_like(weights, np.nan)
         weights /= sum_weights
+        if np.any(np.isnan(weights)):
+            print("Warning: NaN weights encountered. Returning uniform weights.")
+            return np.full(n_samples, 1 / n_samples)
         return weights
+
     for gamma in gammas:
         weights = calc_weights(theta_samples, gamma, obs_wp, obs_vals, lambda_b, M)
         if np.any(np.isnan(weights)):
             print("Warning: NaN weights encountered. Repeating the sampling process.")
             return importance_sampling_with_progressive_correction(obs_wp, obs_vals, lambda_b, M, n_samples, s_stages, prior_dist, scenario, alpha)
-            
-
+        
         indices = np.random.choice(n_samples, size=n_samples, p=weights)
         resampled_samples = theta_samples[indices]
         means = np.mean(resampled_samples, axis=0)
         covariances = np.cov(resampled_samples, rowvar=False)
+        
         perturbations = multivariate_normal.rvs(mean=means, cov=covariances * alpha, size=n_samples)
         perturbations[:, 0] = np.clip(perturbations[:, 0], 0, scenario.workspace_size[0])
         perturbations[:, 1] = np.clip(perturbations[:, 1], 0, scenario.workspace_size[1])
         perturbations[:, 2] = np.clip(perturbations[:, 2], scenario.intensity_range[0], scenario.intensity_range[1])
+        
         theta_samples = perturbations
+
     theta_estimate = np.mean(theta_samples, axis=0)
     return theta_estimate, theta_samples
 
-def calculate_bic(log_likelihood, num_params, num_data_points):
+def calculate_bic(log_likelihood: float, num_params: int, num_data_points: int) -> float:
     """Calculate the Bayesian Information Criterion."""
     return 2 * log_likelihood + num_params * np.log(num_data_points)
 
-def estimate_sources_bayesian(obs_wp, obs_vals, lambda_b, max_sources, n_samples, s_stages, scenario):
+def estimate_sources_bayesian(
+    obs_wp: np.ndarray, 
+    obs_vals: np.ndarray, 
+    lambda_b: float, 
+    max_sources: int, 
+    n_samples: int, 
+    s_stages: int, 
+    scenario: RadiationField
+) -> Tuple[np.ndarray, int, float]:
+    """
+    Estimate the number and parameters of radioactive sources using Bayesian approach.
+    
+    Parameters:
+    - obs_wp: Observation waypoints, array of shape (num_observations, 2).
+    - obs_vals: Observed values (counts), array of shape (num_observations,).
+    - lambda_b: Background radiation rate.
+    - max_sources: Maximum number of sources to consider.
+    - n_samples: Number of samples for importance sampling.
+    - s_stages: Number of stages for progressive correction.
+    - scenario: Scenario object containing workspace size and intensity range.
+    
+    Returns:
+    - best_estimate: Best estimate of source parameters.
+    - best_M: Best estimate of the number of sources.
+    - best_bic: Best Bayesian Information Criterion value.
+    """
     best_bic = -np.inf
     best_estimate = None
     best_M = 0
+
     for M in range(1, max_sources + 1):
         prior_x = uniform(loc=0, scale=scenario.workspace_size[0])
         prior_y = uniform(loc=0, scale=scenario.workspace_size[1])
         prior_intensity = uniform(loc=scenario.intensity_range[0], scale=scenario.intensity_range[1])
         prior_dist = [prior_x, prior_y, prior_intensity] * M
+        
         theta_estimate, theta_samples = importance_sampling_with_progressive_correction(
             obs_wp, obs_vals, lambda_b, M, n_samples, s_stages, prior_dist, scenario
         )
+        
         log_likelihood = -poisson_log_likelihood(theta_estimate, obs_wp, obs_vals, lambda_b, M)
         num_params = 3 * M
         bic = calculate_bic(log_likelihood, num_params, len(obs_vals))
+        
         if bic > best_bic:
             best_bic = bic
             best_estimate = theta_estimate
             best_M = M
+
     return best_estimate, best_M, best_bic
 
 def create_gif(save_dir, output_filename="sources_estimation_test_0.gif"):

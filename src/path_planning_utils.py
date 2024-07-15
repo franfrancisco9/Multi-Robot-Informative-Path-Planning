@@ -427,19 +427,18 @@ def source_distance(scenario, source_list, save_fig_title=None, show=False):
         plt.show()
     plt.close()
 
+import numpy as np
+from scipy.stats import poisson, uniform, multivariate_normal
+from typing import List, Tuple
+
 """
 Estimate Sources
 Citation:
 M. Morelande, B. Ristic and A. Gunatilaka, "Detection and parameter estimation of multiple radioactive sources,"
 2007 10th International Conference on Information Fusion, Quebec, QC, Canada, 2007, pp. 1-7, doi: 10.1109/ICIF.2007.4408094.
 """
-def poisson_log_likelihood(
-    theta: np.ndarray, 
-    obs_wp: np.ndarray, 
-    obs_vals: np.ndarray, 
-    lambda_b: float, 
-    M: int
-) -> float:
+
+def poisson_log_likelihood(theta: np.ndarray, obs_wp: np.ndarray, obs_vals: np.ndarray, lambda_b: float, M: int) -> float:
     """
     Calculate the Poisson log-likelihood for given source parameters and observations.
     
@@ -451,20 +450,23 @@ def poisson_log_likelihood(
     - M: Number of sources.
 
     Returns:
-    - Negative log-likelihood value.
+    - Log-likelihood value.
     """
     obs_wp = np.array(obs_wp)  # Ensure obs_wp is a NumPy array
-    converted_obs_vals = np.round(obs_vals).astype(int)  # Ensure integer counts
+    obs_vals = np.round(obs_vals).astype(int) // 10000  # Scale down observed values to ensure reasonable counts
     sources = theta.reshape((M, 3))
     
-    d_ji = np.sqrt((obs_wp[:, None, 0] - sources[:, 0])**2 + (obs_wp[:, None, 1] - sources[:, 1])**2)
+    d_ji = (obs_wp[:, None, 0] - sources[:, 0])**2 + (obs_wp[:, None, 1] - sources[:, 1])**2
     alpha_i = sources[:, 2]
-    lambda_j = lambda_b + np.sum(alpha_i / np.maximum(d_ji**2, 1e-6), axis=1)
+    lambda_j = lambda_b + np.sum(alpha_i / np.maximum(d_ji, 1e-6), axis=1)
     
-    log_pmf = poisson.logpmf(converted_obs_vals, lambda_j)
-    log_likelihood = np.sum(log_pmf)
+    # Ensure lambda_j is positive to avoid log(0) issues
+    lambda_j = np.maximum(lambda_j, 1e-10)
     
-    return -log_likelihood
+    log_pmf = poisson.logpmf(obs_vals, lambda_j)
+    total_log_likelihood = np.sum(log_pmf)
+    
+    return total_log_likelihood
 
 def importance_sampling_with_progressive_correction(
     obs_wp: np.ndarray, 
@@ -506,8 +508,8 @@ def importance_sampling_with_progressive_correction(
         lambda_b: float, 
         M: int
     ) -> np.ndarray:
-        sample_log_likelihood = -np.array([poisson_log_likelihood(theta[i], obs_wp, obs_vals, lambda_b, M) for i in range(len(theta))])
-        log_weights = gamma * sample_log_likelihood
+        sample_likelihood = np.array([poisson_log_likelihood(theta[i], obs_wp, obs_vals, lambda_b, M) for i in range(len(theta))])
+        log_weights = gamma * sample_likelihood
         max_log_weights = np.max(log_weights)
         weights = np.exp(log_weights - max_log_weights)  # Avoid underflow
         sum_weights = np.sum(weights)
@@ -538,9 +540,11 @@ def importance_sampling_with_progressive_correction(
     theta_estimate = np.mean(theta_samples, axis=0)
     return theta_estimate, theta_samples
 
+
 def calculate_bic(log_likelihood: float, num_params: int, num_data_points: int) -> float:
     """Calculate the Bayesian Information Criterion."""
-    return 2 * log_likelihood + num_params * np.log(num_data_points)
+    return -2 * log_likelihood + num_params * np.log(num_data_points)
+
 
 def estimate_sources_bayesian(
     obs_wp: np.ndarray, 
@@ -549,7 +553,7 @@ def estimate_sources_bayesian(
     max_sources: int, 
     n_samples: int, 
     s_stages: int, 
-    scenario: RadiationField
+    scenario: 'RadiationField'
 ) -> Tuple[np.ndarray, int, float]:
     """
     Estimate the number and parameters of radioactive sources using Bayesian approach.
@@ -581,11 +585,19 @@ def estimate_sources_bayesian(
         theta_estimate, theta_samples = importance_sampling_with_progressive_correction(
             obs_wp, obs_vals, lambda_b, M, n_samples, s_stages, prior_dist, scenario
         )
-        
-        log_likelihood = -poisson_log_likelihood(theta_estimate, obs_wp, obs_vals, lambda_b, M)
+        log_likelihood = poisson_log_likelihood(theta_estimate, obs_wp, obs_vals, lambda_b, M)
         num_params = 3 * M
         bic = calculate_bic(log_likelihood, num_params, len(obs_vals))
-        
+        print(f"\nEstimated {M} sources: {theta_estimate}")
+        print(f"Log-likelihood: {log_likelihood}")
+        print(f"BIC: {bic}")
+        # Check fake implementation for testing
+        if M == 2:
+            theta_estimate_fake = np.array([30, 30, 100000, 20, 20, 100000])
+            log_likelihood_fake = poisson_log_likelihood(theta_estimate_fake, obs_wp, obs_vals, lambda_b, M)
+            bic_fake = calculate_bic(log_likelihood_fake, num_params, len(obs_vals))
+            print(f"\nLog-likelihood fake: {log_likelihood_fake}")
+            print(f"BIC fake: {bic_fake}")
         if bic > best_bic:
             best_bic = bic
             best_estimate = theta_estimate

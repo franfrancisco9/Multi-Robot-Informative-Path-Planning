@@ -2,15 +2,17 @@ import numpy as np
 import argparse
 import json
 from tqdm import tqdm
+from typing import List, Dict, Callable
 
-# Assuming the modules are correctly implemented
-from boustrophedon import *
-from radiation import RadiationField
-from informative import *
-from RRT import *
-from path_planning_utils import helper_plot, calculate_differential_entropy, save_run_info, run_number_from_folder, calculate_source_errors
+from src.boustrophedon.boustrophedon import Boustrophedon, MultiAgentBoustrophedon
+from src.point_source.point_source import PointSourceField
+from src.informative.informative import *
+from src.estimation.estimation import estimate_sources_bayesian
+from src.rrt.rrt import *
+from src.visualization.plot_helper import helper_plot
+from src.utils.path_planning_utils import run_number_from_folder, save_run_info, calculate_source_errors
 
-def load_configuration(config_path):
+def load_configuration(config_path: str) -> Dict:
     """Load configuration from a JSON file."""
     try:
         with open(config_path, 'r') as file:
@@ -22,25 +24,21 @@ def load_configuration(config_path):
         print("Error decoding the configuration file. Please check its format.")
         exit(1)
 
-def initialize_scenarios(config):
+def initialize_scenarios(config: Dict) -> List[PointSourceField]:
     """Initialize scenarios based on the configuration."""
     scenarios = []
     for scenario_config in config["scenarios"]:
-        # Add seed to the scenario configuration if present in the main configuration
         if "seed" in config["args"]:
-            if config["args"]["seed"] == -1:
-                scenario_config["params"]["seed"] = None
-            else:
-                scenario_config["params"]["seed"] = config["args"]["seed"]
+            scenario_config["params"]["seed"] = None if config["args"]["seed"] == -1 else config["args"]["seed"]
                 
-        scenario = RadiationField(**scenario_config["params"])
+        scenario = PointSourceField(**scenario_config["params"])
         if "specific_params" in scenario_config:
             for key, value in scenario_config["specific_params"].items():
                 scenario.update_source(int(key)-1, *value)
         scenarios.append(scenario)
     return scenarios
 
-def get_constructor_args(cls, args):
+def get_constructor_args(cls: Callable, args: Dict) -> Dict:
     """
     Recursively collects constructor arguments from the given class and its base classes.
     
@@ -53,16 +51,14 @@ def get_constructor_args(cls, args):
     """
     constructor_args = {}
     if hasattr(cls, '__init__') and hasattr(cls.__init__, '__code__'):
-        # Collect arguments for the current class's __init__ method
         constructor_args.update({k: v for k, v in args.items() if k in cls.__init__.__code__.co_varnames})
 
-    # Recursively collect arguments from base classes
     for base in getattr(cls, '__bases__', []):
         constructor_args.update(get_constructor_args(base, args))
     
     return constructor_args
 
-def initialize_strategies(config, args):
+def initialize_strategies(config: Dict, args: Dict) -> Dict[str, Callable]:
     """
     Initialize strategies based on the configuration, using recursion to collect constructor arguments.
     
@@ -87,13 +83,9 @@ def initialize_strategies(config, args):
 
     return strategy_instances
 
-
-def run_simulations(scenarios, strategy_instances, args):
+def run_simulations(scenarios: List[PointSourceField], strategy_instances: Dict[str, Callable], args: Dict) -> None:
     """Run simulations for all scenarios and strategies."""
-    if args["run_number"] == -1:
-        run_number = run_number_from_folder()
-    else:
-        run_number = args["run_number"]
+    run_number = run_number_from_folder() if args["run_number"] == -1 else args["run_number"]
     print(f"\nRun number: {run_number}\n")
     RMSE_per_scenario = {}
     WRMSE_per_scenario = {}
@@ -105,7 +97,6 @@ def run_simulations(scenarios, strategy_instances, args):
     with tqdm(total=args["rounds"] * len(scenarios) * len(strategy_instances), desc="Overall Progress") as pbar:
         for scenario_idx, scenario in enumerate(scenarios, start=1):
             print("#" * 80)
-            # Temporary storage for the current scenario's RMSE and differential entropy
             RMSE_lists = {strategy_name: [] for strategy_name in strategy_instances}
             WRMSE_lists = {strategy_name: [] for strategy_name in strategy_instances}
             Diff_Entropy_lists = {strategy_name: [] for strategy_name in strategy_instances}
@@ -123,7 +114,6 @@ def run_simulations(scenarios, strategy_instances, args):
 
                     Diff_Entropy = calculate_differential_entropy(std)
                     TIME = strategy.time_taken if hasattr(strategy, 'time_taken') else None
-                    # Obtain the estimated locations, number of sources, and theta samples
                     estimated_locs = strategy.best_estimates if hasattr(strategy, 'best_estimates') else []
                     estimated_locs = np.array(estimated_locs).reshape(-1, 3)
                     Source_lists[strategy_name]['source'].append(estimated_locs)
@@ -149,7 +139,6 @@ def run_simulations(scenarios, strategy_instances, args):
             TIME_per_scenario[f"Scenario_{scenario_idx}"] = TIME_lists
             PATHS_per_scenario[f"Scenario_{scenario_idx}"] = Path_lists
 
-    # Save run information after processing all scenarios
     save_run_info(run_number, RMSE_per_scenario, WRMSE_per_scenario, Diff_Entropy_per_scenario, Source_per_scenario, TIME_per_scenario, args, scenarios)
 
 def main():
@@ -167,8 +156,6 @@ def main():
     print("#" * 80)
     print("Loading scenarios and strategies...")
     scenarios = initialize_scenarios(config)
-    # change seed back to random
-    config["args"]["seed"] = -1
     strategy_instances = initialize_strategies(config, config["args"])
     print("Scenarios and strategies loaded successfully.")
     print("#" * 80)
@@ -177,5 +164,6 @@ def main():
     print("#" * 80)
     print("Simulations completed successfully.")
     print("#" * 80)
+
 if __name__ == "__main__":
     main()

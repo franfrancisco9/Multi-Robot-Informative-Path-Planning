@@ -22,23 +22,7 @@ def point_source_gain_no_penalties(self, node, agent_idx):
             for source in self.best_estimates:
                 x_k, y_k, intensity = source
                 d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
-                
-                # Calculate the kth sources suppression factor F_src^(t,k)(node_t)
-                F_src = 0
-                for other_source in self.best_estimates:
-                    if not np.array_equal(source, other_source):
-                        x_j, y_j, _ = other_source
-                        mid_point = [(x_k + x_j) / 2, (y_k + y_j) / 2]
-                        d_t_k_j = np.linalg.norm([x_t - mid_point[0], y_t - mid_point[1]])
-                        
-                        # Distance suppression factor
-                        C_src_Dist = 2 - 1 / (1 + np.exp((d_t_k_j - 2) / 16))
-                        
-                        # Suppression factor
-                        F_src += (1 - C_src_Dist + C_src_Dist / (1 + np.exp((2 - d_t_k_j) / 16)))
-                
-                # Add the point source gain
-                point_source_gain += (1 + np.exp(-(d_src - 2)**2 / 2*16)) * F_src
+                point_source_gain += intensity / d_src**2
             return point_source_gain
         else:
             return 0
@@ -60,30 +44,14 @@ def point_source_gain_only_distance_penalty(self, node, agent_idx):
             for source in self.best_estimates:
                 x_k, y_k, intensity = source
                 d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
-                
-                # Calculate the kth sources suppression factor F_src^(t,k)(node_t)
-                F_src = 0
-                for other_source in self.best_estimates:
-                    if not np.array_equal(source, other_source):
-                        x_j, y_j, _ = other_source
-                        mid_point = [(x_k + x_j) / 2, (y_k + y_j) / 2]
-                        d_t_k_j = np.linalg.norm([x_t - mid_point[0], y_t - mid_point[1]])
-                        
-                        # Distance suppression factor
-                        C_src_Dist = 2 - 1 / (1 + np.exp((d_t_k_j - 2) / 16))
-                        
-                        # Suppression factor
-                        F_src += (1 - C_src_Dist + C_src_Dist / (1 + np.exp((2 - d_t_k_j) / 16)))
-                
-                # Add the point source gain
-                point_source_gain += (1 + np.exp(-(d_src - 2)**2 / 2*16)) * F_src
+                point_source_gain += intensity / d_src**2
             return point_source_gain * distance_penalty(node) 
         else:
             return 0
 
     def distance_penalty(node):
         if node.parent:
-            return np.exp(0.5 * np.linalg.norm(node.point - node.parent.point))
+            return np.exp(-500 * np.linalg.norm(node.point - node.parent.point))
         return 1
 
     final_gain = 0
@@ -104,36 +72,20 @@ def point_source_gain_distance_rotation_penalty(self, node, agent_idx):
             for source in self.best_estimates:
                 x_k, y_k, intensity = source
                 d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
-                
-                # Calculate the kth sources suppression factor F_src^(t,k)(node_t)
-                F_src = 0
-                for other_source in self.best_estimates:
-                    if not np.array_equal(source, other_source):
-                        x_j, y_j, _ = other_source
-                        mid_point = [(x_k + x_j) / 2, (y_k + y_j) / 2]
-                        d_t_k_j = np.linalg.norm([x_t - mid_point[0], y_t - mid_point[1]])
-                        
-                        # Distance suppression factor
-                        C_src_Dist = 2 - 1 / (1 + np.exp((d_t_k_j - 2) / 16))
-                        
-                        # Suppression factor
-                        F_src += (1 - C_src_Dist + C_src_Dist / (1 + np.exp((2 - d_t_k_j) / 16)))
-                
-                # Add the point source gain
-                point_source_gain += (1 + np.exp(-(d_src - 2)**2 / 2*16)) * F_src
+                point_source_gain += intensity / d_src**2
             return point_source_gain * distance_penalty(node) * rotation_penalty(node) 
         else:
             return 0
 
     def distance_penalty(node):
         if node.parent:
-            return np.exp(0.5 * np.linalg.norm(node.point - node.parent.point))
+            return np.exp(-500 * np.linalg.norm(node.point - node.parent.point))
         return 1
 
     def rotation_penalty(node):
         if node.parent:
             theta_t = np.arctan2(node.point[1] - node.parent.point[1], node.point[0] - node.parent.point[0])
-            return np.exp(0.05*(theta_t**2) / 0.1)
+            return np.exp(-10*(theta_t**2) / 0.1)
         return 1
 
     final_gain = 0
@@ -145,7 +97,6 @@ def point_source_gain_distance_rotation_penalty(self, node, agent_idx):
     if final_gain < 0:
         return 0
     return final_gain
-
 def point_source_gain_all(self, node, agent_idx):
     def sources_gain(node):
         x_t, y_t = node.point
@@ -154,70 +105,40 @@ def point_source_gain_all(self, node, agent_idx):
             for source in self.best_estimates:
                 x_k, y_k, intensity = source
                 d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
-                
-                # Calculate the kth sources suppression factor F_src^(t,k)(node_t)
-                F_src = 0
-                for other_source in self.best_estimates:
-                    if not np.array_equal(source, other_source):
-                        x_j, y_j, _ = other_source
-                        mid_point = [(x_k + x_j) / 2, (y_k + y_j) / 2]
-                        d_t_k_j = np.linalg.norm([x_t - mid_point[0], y_t - mid_point[1]])
-                        
-                        # Distance suppression factor
-                        C_src_Dist = 2 - 1 / (1 + np.exp((d_t_k_j - 2) / 16))
-                        
-                        # Suppression factor
-                        F_src += (1 - C_src_Dist + C_src_Dist / (1 + np.exp((2 - d_t_k_j) / 16)))
-                
-                # Add the point source gain
-                point_source_gain += (1 + np.exp(-(d_src - 2)**2 / (2 * 16))) * F_src
-
-            #print(f"Point Source Gain before penalties: {point_source_gain}")
-            final_gain = point_source_gain * exploitation_penalty(node) * distance_penalty(node) * rotation_penalty(node)
-            #print(f"Point Source Gain after penalties: {final_gain}")
-            return final_gain
+                point_source_gain += intensity / d_src**2
+            return point_source_gain * distance_penalty(node) * rotation_penalty(node) * exploitation_penalty(node)
         else:
             return 0
 
     def distance_penalty(node):
         if node.parent:
-            penalty = np.exp(0.5 * np.linalg.norm(node.point - node.parent.point))  # Reduced exponent base
-            #print(f"Distance Penalty: {penalty}")
-            return penalty
+            return np.exp(-500 * np.linalg.norm(node.point - node.parent.point))
         return 1
 
     def rotation_penalty(node):
         if node.parent:
             theta_t = np.arctan2(node.point[1] - node.parent.point[1], node.point[0] - node.parent.point[0])
-            penalty = np.exp(0.05 * (theta_t**2) / 0.1)  # Adjusted factor
-            #print(f"Rotation Penalty: {penalty}")
-            return penalty
+            return np.exp(-10*(theta_t**2) / 0.1)
         return 1
 
     def exploitation_penalty(node):
         if len(self.agents_obs_wp[agent_idx]) > 0:
             n_obs_wp = 0
             for i in range(len(self.agent_positions)):
-                for obs_wp in self.agents_obs_wp[i]:
-                    distance = np.linalg.norm(node.point - obs_wp)
-                    if distance < self.d_waypoint_distance*10:
-                        n_obs_wp += 1
-            penalty = np.exp(5 * n_obs_wp)
-            #print(f"Exploitation Penalty: {penalty}, Number of Nearby Observations: {n_obs_wp}")
-            return penalty
+                if i != agent_idx:
+                    n_obs_wp += len([obs_wp for obs_wp in self.agents_obs_wp[i] if np.linalg.norm(node.point - obs_wp) < self.d_waypoint_distance])
+            return np.exp(-500 * n_obs_wp)
         return 1
 
     final_gain = 0
     current_node = node
     while current_node.parent:
-        final_gain += sources_gain(current_node)
+        final_gain += sources_gain(current_node) 
         current_node = current_node.parent
 
     if final_gain < 0:
         return 0
     return final_gain
-
-
 # Tree Generation Functions
 
 def rrt_tree_generation(self, budget_portion, agent_idx):
@@ -291,154 +212,83 @@ def rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_sou
 def gp_information_update(self):
     self.measurements = sum((agent_measurements for agent_measurements in self.agents_measurements), [])
     self.obs_wp = sum((agent_wp for agent_wp in self.agents_obs_wp), [])
-    if len(self.measurements) > 0:
-        print(len(self.measurements), len(self.obs_wp))
+    if len(self.measurements) % 10 == 0 and len(self.measurements) > 0:
         self.scenario.gp.fit(self.obs_wp, self.measurements)
 
 def source_metric_information_update(self):
     self.measurements = sum((agent_measurements for agent_measurements in self.agents_measurements), [])
     self.full_path = sum((agent_path for agent_path in self.agents_full_path), [])
-    
-    if len(self.measurements) > 0:
+    if len(self.measurements) % 5 == 0 and len(self.measurements) > 0:
         estimates, _, bic = estimate_sources_bayesian(
             self.full_path, self.measurements, self.lambda_b,
             self.max_sources, self.n_samples, self.s_stages, self.scenario
         )
-        # print("\nBIC: ", bic, "\n")
-        # print("\nEstimates: ", estimates, "\n")
-        if bic < self.best_bic:
+        if bic > self.best_bic:
             self.best_bic = bic
             self.best_estimates = estimates.reshape((-1, 3))
-            # print("\nNew Best BIC: ", self.best_bic, "\n")
-            # print("\nNew Best Estimates: ", self.best_estimates, "\n")
-    # self.best_estimates = np.array([[20, 20, 100000]])
-    
+
 # Path Selection Functions
 
-def random_path_selection(self, agent_idx, current_position=None, current_budget=None):
+def random_path_selection(self, agent_idx, current_position=None):
     leaf_nodes = [node for node in self.tree_nodes[agent_idx] if not node.children]
     if not leaf_nodes:
         return []
     selected_leaf = np.random.choice(leaf_nodes)
     return trace_path_to_root(selected_leaf)
 
-def informative_source_metric_path_selection(self, agent_idx, current_position=None, current_budget=None):
+def informative_source_metric_path_selection(self, agent_idx, current_position=None):   
     """
-    Generic path selection strategy for Multi-Agent Informative Source Metric RRT Path Planning algorithms.
+    Generic path selection strategy for Multi-Agent Informative Source Metric RRT Path Planning algorithms
 
     Parameters:
     - self: Assumes a class that inherits from InformativeRRTBaseClass
     - agent_idx: The index of the agent in the multi-agent system
-    - current_position: The current position of the agent
 
-    Returns:
-    - path: The selected path for the agent as a list of points.
     """
-    # get current root 
-    current_root = self.agents_roots[agent_idx]
-    if not current_root:
-        return []
-    current_leafs = []
-    # from the root we can get the leaf nodes 
-    def get_leafs(node):
-        if not node.children:
-            current_leafs.append(node)
-        for child in node.children:
-            get_leafs(child)
-
-    get_leafs(current_root)
-
-    if not current_leafs:
-        return []
-    if self.best_estimates.size == 0:
-        selected_node = np.random.choice(current_leafs)
-    else:
-        # select the max unless it is the current position in that case go to the next best
-        selected_node = max(current_leafs, key=lambda node: node.information)
-        if np.array_equal(selected_node.point, current_position):
-            current_leafs.remove(selected_node)
-            if not current_leafs:
-                return [current_position]
-            selected_node = max(current_leafs, key=lambda node: node.information)
-
-
-    possible_path = trace_path_to_root(selected_node)
-    # make sure there is enough budget to do the path, if not stop where the budget ends
-    if current_budget is not None and current_position is not None:
-        path = []
-        current_budget = current_budget
-        for node in possible_path:
-            if current_budget - np.linalg.norm(node - current_position) < 0:
-                path.append(node)
-                break
-            path.append(node)
-            #self.information_update() if len(self.agents_obs_wp[agent_idx]) % 5 == 0 else None
-            current_budget -= np.linalg.norm(node - current_position)
-        # if path == []:
-        #     # we still need to move to at least one node so we select the first node
-        #     path.append(current_position, possible_path[0])
-        return path
-    return possible_path
-
-    budget = self.budget[agent_idx]
     all_nodes = self.tree_nodes[agent_idx]
     if not all_nodes:
         return []
-    
-    def find_best_node(nodes, exclude_set):
-        """Find the best node not in the exclude set based on information."""
-        candidates = [node for node in nodes]
-        # if not candidates:
-        #     return None
-        return max(candidates, key=lambda node: node.information)
 
-    if current_position is None:
-        current_node = np.random.choice(all_nodes)
+    if self.best_estimates.size == 0:
+        selected_node = np.random.choice(all_nodes)
     else:
+        selected_node = max(all_nodes, key=lambda node: node.information)
+    return trace_path_to_root(selected_node)
+    if current_position is not None:
         current_node = min(all_nodes, key=lambda node: np.linalg.norm(node.point - current_position))
-
-    path = [current_node]
-    visited_nodes = set(path)
-    # current_budget = budget if budget is not None else float('inf')
-
-    # while current_budget > 0:
-    best_node = find_best_node(all_nodes, visited_nodes)
-    if not best_node:
-        return [node.point for node in path]
-
-    path_to_best = trace_path_to_root(best_node)
-    path_to_current = trace_path_to_root(current_node)
-
-    # Find the highest index common node by comparing node points
-    common_node = None
-    for node1 in reversed(path_to_current):
-        for node2 in reversed(path_to_best):
-            if np.array_equal(node1.point, node2.point):
-                common_node = node1
+        # Ensure we trace the path from the current node to the selected node without jumping to the root
+        path_to_current = trace_path_to_root(current_node)
+        path_to_selected = trace_path_to_root(selected_node)
+        # print("Path to Current: ", [node for node in path_to_current])
+        # print("Path to Selected: ", [node for node in path_to_selected])
+        # Find the highest index common node by comparing node points
+        common_node = None
+        for node1 in reversed(path_to_current):
+            for node2 in reversed(path_to_selected):
+                if np.array_equal(node1, node2):
+                    common_node = node1
+                    break
+            if common_node is not None:
                 break
+        if common_node is not None:
+            # print("Common Node: ", common_node)
+            index_current = next(i for i, node in enumerate(path_to_current) if np.array_equal(node, common_node))
+            index_selected = next(i for i, node in enumerate(path_to_selected) if np.array_equal(node, common_node))
+            first_part = []
+            for node in reversed(path_to_current[index_current-1:]):
+                first_part.append(node) 
+            second_part = []
+            for node in path_to_selected[index_selected:]:
+                second_part.append(node)
+            # print("First Part: ", first_part)
+            # print("Second Part: ", second_part)
+            path = first_part + second_part
+        else:
+            path = path_to_current + path_to_selected
+        return [node for node in path]
 
-    if common_node is not None:
-        index_current = next(i for i, node in enumerate(path_to_current) if np.array_equal(node.point, common_node.point))
-        index_best = next(i for i, node in enumerate(path_to_best) if np.array_equal(node.point, common_node.point))
-        first_part = list(reversed(path_to_current[index_current + 1:]))  # skip the common node in the first part
-        second_part = path_to_best[index_best:]  # skip the common node in the second part
-        segment = first_part + second_part  # avoid duplicating common node
-    else:
-        segment = [current_node] + [best_node]  # Directly go from current position to best node if no common node is found
+    return [node for node in trace_path_to_root(selected_node)]
 
-    for node in segment:
-        if current_node != node:
-            # cost_to_next = np.linalg.norm(node.point - current_node.point)
-            # if current_budget - cost_to_next < 0:
-            #     path.append(current_node)
-            #     return [node.point for node in path]
-            # current_budget -= cost_to_next
-            path.append(node)
-            current_node = node
-            visited_nodes.add(node)
-
-    path.append(current_node)
-    return [node.point for node in path]
 
 def bias_beta_path_selection(self, agent_idx, current_position=None):
     leaf_nodes = [node for node in self.tree_nodes[agent_idx] if not node.children]
@@ -518,15 +368,12 @@ class InformativeRRTBaseClass():
                 for i in range(self.num_agents):
                     if self.budget[i] > 0:
                         self.tree_generation(budget_portion[i], i)
-                        path = [[i, j] for i in range(0, 41, 5) for j in range(0, 41, 5)]
-                        # print("Path: ", path)
+                        path = self.path_selection(i, self.agents_full_path[i][-1] if self.agents_full_path[i] else None)
                         budget_spent = self.calculate_budget_spent(path)
                         self.update_observations_and_model(path, i)
                         self.agents_full_path[i].extend(path)
-                        # print("full path: ", self.agents_full_path[i])
-                        self.budget[i] -= budget_spent
-                        # if self.budget[i] < budget_portion[i]:
-                        #     self.budget[i] = 0
+                        self.budget[i] -= budget_portion[i]
+
                         pbar.update(budget_spent)
                         if len(path) > 0 and self.budget[i] > 0:
                             self.initialize_trees(path[-1], i)
@@ -536,10 +383,10 @@ class InformativeRRTBaseClass():
 
     def update_observations_and_model(self, path, agent_idx):
         if path:
-            measurements = self.scenario.simulate_measurements(path)
-            measurements_log = np.log10(measurements)
-            self.agents_measurements[agent_idx].extend(measurements)
-            self.agents_obs_wp[agent_idx].extend(path)
+            for point in path:
+                measurement = self.scenario.simulate_measurements([point])[0]
+                self.agents_measurements[agent_idx].append(measurement)
+                self.agents_obs_wp[agent_idx].append(point)
 
     def calculate_budget_spent(self, path):
         if not path:
@@ -573,7 +420,7 @@ class InformativeRRTBaseClass():
     def tree_generation(self, budget_portion, agent_idx):
         raise NotImplementedError("tree_generation method must be implemented in the subclass")
     
-    def path_selection(self, agent_idx, current_position=None, current_budget=None):
+    def path_selection(self, agent_idx, current_position=None):
         raise NotImplementedError("path_selection method must be implemented in the subclass")
 
     def information_update(self):
@@ -611,14 +458,14 @@ class RRTRIG_PointSourceInformative_SourceMetric_PathPlanning(InformativeRRTBase
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.best_estimates = np.array([])
-        self.best_bic = np.inf
+        self.best_bic = -np.inf
         self.name = "RRTRIG_PointSourceInformative_SourceMetric_Path"
 
     def tree_generation(self, budget_portion, agent_idx):
         rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_source_gain_no_penalties)
 
-    def path_selection(self, agent_idx, current_position=None, current_budget=None):
-        return informative_source_metric_path_selection(self, agent_idx, current_position, current_budget)
+    def path_selection(self, agent_idx, current_position=None):
+        return informative_source_metric_path_selection(self, agent_idx, current_position)
 
     def information_update(self):
         source_metric_information_update(self)
@@ -627,14 +474,14 @@ class RRTRIG_PointSourceInformative_Distance_SourceMetric_PathPlanning(Informati
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.best_estimates = np.array([])
-        self.best_bic = np.inf
+        self.best_bic = -np.inf
         self.name = "RRTRIG_PointSourceInformative_Distance_SourceMetric_Path"
 
     def tree_generation(self, budget_portion, agent_idx):
         rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_source_gain_only_distance_penalty)
 
-    def path_selection(self, agent_idx, current_position=None, current_budget=None):
-        return informative_source_metric_path_selection(self, agent_idx, current_position, current_budget)
+    def path_selection(self, agent_idx, current_position=None):
+        return informative_source_metric_path_selection(self, agent_idx, current_position)
     
     def information_update(self):
         source_metric_information_update(self)
@@ -643,14 +490,14 @@ class RRTRIG_PointSourceInformative_DistanceRotation_SourceMetric_PathPlanning(I
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.best_estimates = np.array([])
-        self.best_bic = np.inf
+        self.best_bic = -np.inf
         self.name = "RRTRIG_PointSourceInformative_DistanceRotation_SourceMetric_Path"
 
     def tree_generation(self, budget_portion, agent_idx):
         rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_source_gain_distance_rotation_penalty)
 
-    def path_selection(self, agent_idx, current_position=None, current_budget=None):
-        return informative_source_metric_path_selection(self, agent_idx, current_position, current_budget)
+    def path_selection(self, agent_idx, current_position=None):
+        return informative_source_metric_path_selection(self, agent_idx, current_position)
 
     def information_update(self):
         source_metric_information_update(self)
@@ -659,14 +506,14 @@ class RRTRIG_PointSourceInformative_All_SourceMetric_PathPlanning(InformativeRRT
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.best_estimates = np.array([])
-        self.best_bic = np.inf
+        self.best_bic = -np.inf
         self.name = "RRTRIG_PointSourceInformative_All_SourceMetric_Path"
 
     def tree_generation(self, budget_portion, agent_idx):
         rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_source_gain_all)
 
-    def path_selection(self, agent_idx, current_position=None, current_budget=None):
-        return informative_source_metric_path_selection(self, agent_idx, current_position, current_budget)
+    def path_selection(self, agent_idx, current_position=None):
+        return informative_source_metric_path_selection(self, agent_idx, current_position)
 
     def information_update(self):
         source_metric_information_update(self)
@@ -677,7 +524,7 @@ class RRT_BiasBetaInformative_GP_PathPlanning(InformativeRRTBaseClass):
         self.directional_bias = directional_bias
         self.name = "RRT_BiasBetaInformative_GP_Path"
 
-    def path_selection(self, agent_idx, current_position=None, current_budget=None):
+    def path_selection(self, agent_idx, current_position=None):
         return bias_beta_path_selection(self, agent_idx, current_position)
 
     def tree_generation(self, budget_portion, agent_idx):
@@ -685,4 +532,3 @@ class RRT_BiasBetaInformative_GP_PathPlanning(InformativeRRTBaseClass):
 
     def information_update(self):
         gp_information_update(self)
-

@@ -306,7 +306,7 @@ def source_metric_information_update(self):
         )
         # print("\nBIC: ", bic, "\n")
         # print("\nEstimates: ", estimates, "\n")
-        if bic < self.best_bic:
+        if bic > self.best_bic:
             self.best_bic = bic
             self.best_estimates = estimates.reshape((-1, 3))
             # print("\nNew Best BIC: ", self.best_bic, "\n")
@@ -372,7 +372,7 @@ def informative_source_metric_path_selection(self, agent_idx, current_position=N
                 path.append(node)
                 break
             path.append(node)
-            #self.information_update() if len(self.agents_obs_wp[agent_idx]) % 5 == 0 else None
+            self.information_update() 
             current_budget -= np.linalg.norm(node - current_position)
         # if path == []:
         #     # we still need to move to at least one node so we select the first node
@@ -516,15 +516,16 @@ class InformativeRRTBaseClass():
         with tqdm(total=sum(self.budget), desc="Running " + str(self.num_agents) + " Agent " + self.name) as pbar:
             while any(b > 0 for b in self.budget):
                 for i in range(self.num_agents):
-                    if self.budget[i] > 0:
+                    if self.budget[i] > 0: 
                         self.tree_generation(budget_portion[i], i)
-                        path = [[i, j] for i in range(0, 41, 5) for j in range(0, 41, 5)]
+                        path = self.path_selection(i, current_position=self.agent_positions[i], current_budget=self.budget[i])
+                        # path =[[i, j] for i in range(0, 41, 5) for j in range(0, 41, 5)]
                         # print("Path: ", path)
                         budget_spent = self.calculate_budget_spent(path)
                         self.update_observations_and_model(path, i)
                         self.agents_full_path[i].extend(path)
                         # print("full path: ", self.agents_full_path[i])
-                        self.budget[i] -= budget_spent
+                        self.budget[i] -= 1000
                         # if self.budget[i] < budget_portion[i]:
                         #     self.budget[i] = 0
                         pbar.update(budget_spent)
@@ -611,7 +612,7 @@ class RRTRIG_PointSourceInformative_SourceMetric_PathPlanning(InformativeRRTBase
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.best_estimates = np.array([])
-        self.best_bic = np.inf
+        self.best_bic = -np.inf
         self.name = "RRTRIG_PointSourceInformative_SourceMetric_Path"
 
     def tree_generation(self, budget_portion, agent_idx):
@@ -627,7 +628,7 @@ class RRTRIG_PointSourceInformative_Distance_SourceMetric_PathPlanning(Informati
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.best_estimates = np.array([])
-        self.best_bic = np.inf
+        self.best_bic = -np.inf
         self.name = "RRTRIG_PointSourceInformative_Distance_SourceMetric_Path"
 
     def tree_generation(self, budget_portion, agent_idx):
@@ -643,7 +644,7 @@ class RRTRIG_PointSourceInformative_DistanceRotation_SourceMetric_PathPlanning(I
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.best_estimates = np.array([])
-        self.best_bic = np.inf
+        self.best_bic = -np.inf
         self.name = "RRTRIG_PointSourceInformative_DistanceRotation_SourceMetric_Path"
 
     def tree_generation(self, budget_portion, agent_idx):
@@ -659,7 +660,7 @@ class RRTRIG_PointSourceInformative_All_SourceMetric_PathPlanning(InformativeRRT
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.best_estimates = np.array([])
-        self.best_bic = np.inf
+        self.best_bic = -np.inf
         self.name = "RRTRIG_PointSourceInformative_All_SourceMetric_Path"
 
     def tree_generation(self, budget_portion, agent_idx):

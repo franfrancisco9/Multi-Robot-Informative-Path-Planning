@@ -17,7 +17,7 @@ class RadiationField:
         gp (GaussianProcessRegressor): Gaussian Process Regressor for field simulation.
     """
 
-    def __init__(self, num_sources=1, workspace_size=(40, 40), intensity_range=(10000, 100000),
+    def __init__(self, num_sources=1, workspace_size=(40, 40), intensity_range=(10000, 1000000),
                  kernel_params=None, seed=None):
         """
         Initializes the radiation field model.
@@ -122,38 +122,38 @@ class RadiationField:
         Z_true = np.zeros(R.shape)
 
         for source in self.sources:
-            # r_n = np.array(source[:2])
-            # A_n = source[2]
-            # # Convert source position to complex number format.
-            # R_n = r_n[0] + 1j * r_n[1]
-            # # Calculate distance from each point in the grid to the source.
-            # dist = np.abs(R - R_n)
-            
-            # # Vectorized intensity and response calculations
-            # intensity = np.where(dist <= self.r_s,
-            #                     A_n / (4 * np.pi * self.r_s**2),
-            #                     A_n * self.T / (4 * np.pi * dist**2))
-
-            # theta = np.arcsin(np.minimum(self.r_d / dist, 1))
-            # response = np.where(dist <= self.r_d,
-            #                     0.5 * A_n,
-            #                     0.5 * A_n * (1 - np.cos(theta)))
-
-            # # Accumulate results
-            # Z_true += intensity + 50 * response
-            # test a simplified intensity/distance**2
             r_n = np.array(source[:2])
             A_n = source[2]
             # Convert source position to complex number format.
             R_n = r_n[0] + 1j * r_n[1]
             # Calculate distance from each point in the grid to the source.
             dist = np.abs(R - R_n)
-
+            
             # Vectorized intensity and response calculations
-            Z_true += A_n / (dist**2)
+            intensity = np.where(dist <= self.r_s,
+                                A_n / (4 * np.pi * self.r_s**2),
+                                A_n * self.T / (4 * np.pi * dist**2))
+
+            theta = np.arcsin(np.minimum(self.r_d / dist, 1))
+            response = np.where(dist <= self.r_d,
+                                0.5 * A_n,
+                                0.5 * A_n * (1 - np.cos(theta)))
+
+            # Accumulate results
+            Z_true += intensity + 50 * response
+            # test a simplified intensity/distance**2
+            # r_n = np.array(source[:2])
+            # A_n = source[2]
+            # # Convert source position to complex number format.
+            # R_n = r_n[0] + 1j * r_n[1]
+            # # Calculate distance from each point in the grid to the source.
+            # dist = np.abs(R - R_n)
+
+            # # Vectorized intensity and response calculations
+            # Z_true += A_n / (dist**2)
         return Z_true
 
-    def simulate_measurements(self, waypoints, noise_level=0.0):
+    def simulate_measurements(self, waypoints, noise_level=0.5):
         """Simulates measurements at given waypoints with configurable noise, vectorized version."""
         intensities = self.intensity(waypoints)
         

@@ -74,7 +74,7 @@ class PointSourceField:
         rand_A = np.random.uniform(*intensity_range, num_sources)
         sources = np.column_stack((rand_x, rand_y, rand_A))
         # revert seed   
-        # np.random.seed(None)
+        np.random.seed(None)
         return sources.tolist()  
 
     def update_source(self, source_index: int, new_x: float, new_y: float, new_A: float) -> None:

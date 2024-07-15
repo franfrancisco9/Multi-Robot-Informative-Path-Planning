@@ -453,7 +453,7 @@ def poisson_log_likelihood(theta: np.ndarray, obs_wp: np.ndarray, obs_vals: np.n
     - Log-likelihood value.
     """
     obs_wp = np.array(obs_wp)  # Ensure obs_wp is a NumPy array
-    obs_vals = np.round(obs_vals).astype(int) // 10000  # Scale down observed values to ensure reasonable counts
+    obs_vals = np.round(obs_vals).astype(int)  # Scale down observed values to ensure reasonable counts
     sources = theta.reshape((M, 3))
     
     d_ji = (obs_wp[:, None, 0] - sources[:, 0])**2 + (obs_wp[:, None, 1] - sources[:, 1])**2
@@ -572,11 +572,11 @@ def estimate_sources_bayesian(
     - best_M: Best estimate of the number of sources.
     - best_bic: Best Bayesian Information Criterion value.
     """
-    best_bic = np.inf
+    best_bic = -np.inf
     best_estimate = None
     best_M = 0
 
-    for M in range(1, max_sources + 1):
+    for M in range(2, max_sources + 1):
         prior_x = uniform(loc=0, scale=scenario.workspace_size[0])
         prior_y = uniform(loc=0, scale=scenario.workspace_size[1])
         prior_intensity = uniform(loc=scenario.intensity_range[0], scale=scenario.intensity_range[1])
@@ -592,13 +592,18 @@ def estimate_sources_bayesian(
         print(f"Log-likelihood: {log_likelihood}")
         print(f"BIC: {bic}")
         # Check fake implementation for testing
-        if M == 2:
-            theta_estimate_fake = np.array([30, 30, 100000, 20, 20, 100000])
+        if M == 5:
+        #        "1": [20, 20, 100000],
+        # "2": [21.0, 21.0, 100000],
+        # "3": [22.0, 22.0, 100000],
+        # "4": [23.0, 23.0, 100000],
+        # "5": [24.0, 24.0, 100000]
+            theta_estimate_fake = np.array([20, 20, 100000, 21.0, 21.0, 100000, 22.0, 22.0, 100000, 23.0, 23.0, 100000, 24.0, 24.0, 100000])
             log_likelihood_fake = poisson_log_likelihood(theta_estimate_fake, obs_wp, obs_vals, lambda_b, M)
             bic_fake = calculate_bic(log_likelihood_fake, num_params, len(obs_vals))
             print(f"\nLog-likelihood fake: {log_likelihood_fake}")
             print(f"BIC fake: {bic_fake}")
-        if bic < best_bic:
+        if bic > best_bic:
             best_bic = bic
             best_estimate = theta_estimate
             best_M = M

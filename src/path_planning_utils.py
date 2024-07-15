@@ -543,7 +543,7 @@ def importance_sampling_with_progressive_correction(
 
 def calculate_bic(log_likelihood: float, num_params: int, num_data_points: int) -> float:
     """Calculate the Bayesian Information Criterion."""
-    return -2 * log_likelihood + num_params * np.log(num_data_points)
+    return np.log(-2 * log_likelihood + num_params * np.log(num_data_points))
 
 
 def estimate_sources_bayesian(
@@ -572,7 +572,7 @@ def estimate_sources_bayesian(
     - best_M: Best estimate of the number of sources.
     - best_bic: Best Bayesian Information Criterion value.
     """
-    best_bic = -np.inf
+    best_bic = np.inf
     best_estimate = None
     best_M = 0
 
@@ -598,7 +598,7 @@ def estimate_sources_bayesian(
             bic_fake = calculate_bic(log_likelihood_fake, num_params, len(obs_vals))
             print(f"\nLog-likelihood fake: {log_likelihood_fake}")
             print(f"BIC fake: {bic_fake}")
-        if bic > best_bic:
+        if bic < best_bic:
             best_bic = bic
             best_estimate = theta_estimate
             best_M = M

@@ -1,7 +1,7 @@
 # src/utils/path_planning_utils.py
-
 """
 Utilities for path planning in radiation field scenarios.
+- Created by: Francisco Fonseca on July 2024
 """
 
 import numpy as np

@@ -1,7 +1,7 @@
 # src/rrt/rrt.py
-
 """
 RRT (Rapidly-exploring Random Trees) path planning implementation.
+- Created by: Francisco Fonseca on July 2024
 """
 
 import numpy as np
@@ -19,17 +19,36 @@ from src.rrt.rrt_utils import (
 )
 from src.point_source.point_source import PointSourceField
 
+# Helper function to calculate suppression factor
+def calculate_suppression_factor(node_point: np.ndarray, source: np.ndarray, other_sources: List[np.ndarray]) -> float:
+    x_t, y_t = node_point
+    x_k, y_k, intensity = source
+    F_src = 0
+    for other_source in other_sources:
+        if not np.array_equal(source, other_source):
+            x_j, y_j, _ = other_source
+            mid_point = [(x_k + x_j) / 2, (y_k + y_j) / 2]
+            d_t_k_j = np.linalg.norm([x_t - mid_point[0], y_t - mid_point[1]])
+
+            # Distance suppression factor
+            C_src_Dist = 2 - 1 / (1 + np.exp((d_t_k_j - 2) / 16))
+
+            # Suppression factor
+            F_src += (1 - C_src_Dist + C_src_Dist / (1 + np.exp((2 - d_t_k_j) / 16)))
+    return F_src
+
 # Gain Calculation Functions
 
 def point_source_gain_no_penalties(self, node: InformativeTreeNode, agent_idx: int) -> float:
     def sources_gain(node: InformativeTreeNode) -> float:
         x_t, y_t = node.point
         point_source_gain = 0
+        other_sources = [s for s in self.best_estimates]
         if hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
             for source in self.best_estimates:
-                x_k, y_k, intensity = source
-                d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
-                point_source_gain += intensity / d_src**2
+                d_src = np.linalg.norm([x_t - source[0], y_t - source[1]])
+                F_src = calculate_suppression_factor(node.point, source, other_sources)
+                point_source_gain += (1 + np.exp(-(d_src - 2)**2 / 2*16)) * F_src
             return point_source_gain
         else:
             return 0
@@ -45,18 +64,19 @@ def point_source_gain_only_distance_penalty(self, node: InformativeTreeNode, age
     def sources_gain(node: InformativeTreeNode) -> float:
         x_t, y_t = node.point
         point_source_gain = 0
+        other_sources = [s for s in self.best_estimates]
         if hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
             for source in self.best_estimates:
-                x_k, y_k, intensity = source
-                d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
-                point_source_gain += intensity / d_src**2
+                d_src = np.linalg.norm([x_t - source[0], y_t - source[1]])
+                F_src = calculate_suppression_factor(node.point, source, other_sources)
+                point_source_gain += (1 + np.exp(-(d_src - 2)**2 / 2*16)) * F_src
             return point_source_gain * distance_penalty(node)
         else:
             return 0
 
     def distance_penalty(node: InformativeTreeNode) -> float:
         if node.parent:
-            return np.exp(-500 * np.linalg.norm(node.point - node.parent.point))
+            return np.exp(0.5 * np.linalg.norm(node.point - node.parent.point))
         return 1
 
     final_gain = 0
@@ -70,24 +90,25 @@ def point_source_gain_distance_rotation_penalty(self, node: InformativeTreeNode,
     def sources_gain(node: InformativeTreeNode) -> float:
         x_t, y_t = node.point
         point_source_gain = 0
+        other_sources = [s for s in self.best_estimates]
         if hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
             for source in self.best_estimates:
-                x_k, y_k, intensity = source
-                d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
-                point_source_gain += intensity / d_src**2
+                d_src = np.linalg.norm([x_t - source[0], y_t - source[1]])
+                F_src = calculate_suppression_factor(node.point, source, other_sources)
+                point_source_gain += (1 + np.exp(-(d_src - 2)**2 / 2*16)) * F_src
             return point_source_gain * distance_penalty(node) * rotation_penalty(node)
         else:
             return 0
 
     def distance_penalty(node: InformativeTreeNode) -> float:
         if node.parent:
-            return np.exp(-500 * np.linalg.norm(node.point - node.parent.point))
+            return np.exp(0.5 * np.linalg.norm(node.point - node.parent.point))
         return 1
 
     def rotation_penalty(node: InformativeTreeNode) -> float:
         if node.parent:
             theta_t = np.arctan2(node.point[1] - node.parent.point[1], node.point[0] - node.parent.point[0])
-            return np.exp(-10 * (theta_t**2) / 0.1)
+            return np.exp(0.05*(theta_t**2) / 0.1)
         return 1
 
     final_gain = 0
@@ -108,14 +129,16 @@ def point_source_gain_all(self, node: InformativeTreeNode, agent_idx: int) -> fl
                 trees_obs_wp.append(None)
         else:
             trees_obs_wp.append(None)
+
     def sources_gain(node: InformativeTreeNode) -> float:
         x_t, y_t = node.point
         point_source_gain = 0
+        other_sources = [s for s in self.best_estimates]
         if hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
             for source in self.best_estimates:
-                x_k, y_k, intensity = source
-                d_src = np.linalg.norm([x_t - x_k, y_t - y_k])
-                point_source_gain += intensity / d_src**2
+                d_src = np.linalg.norm([x_t - source[0], y_t - source[1]])
+                F_src = calculate_suppression_factor(node.point, source, other_sources)
+                point_source_gain += (1 + np.exp(-(d_src - 2)**2 / (2 * 16))) * F_src
             return point_source_gain * distance_penalty(node) * rotation_penalty(node) * exploitation_penalty(node)
         else:
             return 0
@@ -181,7 +204,7 @@ def rrt_star_tree_generation(self, budget_portion: float, agent_idx: int) -> Non
             x_min = x_nearest
             
             for x_near in X_near:
-                if obstacle_free(x_near, x_new) and cost(x_near) + line_cost(x_near, x_new) < c_min:
+                if obstacle_free(x_near.point, x_new) and cost(x_near) + line_cost(x_near, x_new) < c_min:
                     c_min = cost(x_near) + line_cost(x_near, x_new)
                     x_min = x_near
             
@@ -232,6 +255,8 @@ def source_metric_information_update(self) -> None:
             self.max_sources, self.n_samples, self.s_stages, self.scenario
         )
         if bic > self.best_bic:
+            print(f"Estimated {len(estimates)} sources: {estimates}")
+            print(f"BIC: {bic}")
             self.best_bic = bic
             self.best_estimates = estimates.reshape((-1, 3))
 
@@ -276,18 +301,14 @@ def informative_source_metric_path_selection(self, agent_idx: int, current_posit
         if common_node is not None:
             index_current = next(i for i, node in enumerate(path_to_current) if np.array_equal(node, common_node))
             index_selected = next(i for i, node in enumerate(path_to_selected) if np.array_equal(node, common_node))
-            first_part = []
-            for node in reversed(path_to_current[index_current-1:]):
-                first_part.append(node) 
-            second_part = []
-            for node in path_to_selected[index_selected:]:
-                second_part.append(node)
+            first_part = list(reversed(path_to_current[index_current + 1:]))
+            second_part = path_to_selected[index_selected:]
             path = first_part + second_part
         else:
             path = path_to_current + path_to_selected
-        return [node for node in path]
+        return path
 
-    return [node for node in trace_path_to_root(selected_node)]
+    return  trace_path_to_root(selected_node)
 
 def bias_beta_path_selection(self, agent_idx: int, current_position: Optional[np.ndarray] = None) -> List[np.ndarray]:
     leaf_nodes = [node for node in self.tree_nodes[agent_idx] if not node.children]

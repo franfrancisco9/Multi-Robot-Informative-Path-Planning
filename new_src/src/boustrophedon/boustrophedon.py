@@ -1,9 +1,10 @@
+# src/boustrophedon/boustrophedon.py
 """
 Boustrophedon path planner.
-- Created by: Francisco Fonseca on March 2024
+- Created by: Francisco Fonseca on July 2024
 """
 import numpy as np
-from bspline import bspline
+from src.boustrophedon import bspline
 
 class Boustrophedon():
     def __init__(self, scenario, d_waypoint_distance=2.5, budget=375, line_spacing=5):

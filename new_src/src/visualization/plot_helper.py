@@ -1,7 +1,7 @@
 # src/utils/plot_helper.py
-
 """
 Helper functions for plotting in path planning.
+- Created by: Francisco Fonseca on July 2024
 """
 
 import matplotlib.pyplot as plt

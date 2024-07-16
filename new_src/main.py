@@ -9,7 +9,7 @@ from src.point_source.point_source import PointSourceField
 from src.informative.informative import *
 from src.estimation.estimation import estimate_sources_bayesian
 from src.rrt.rrt import *
-from src.visualization.plot_helper import helper_plot
+from src.visualization.plot_helper import helper_plot, calculate_differential_entropy
 from src.utils.path_planning_utils import run_number_from_folder, save_run_info, calculate_source_errors
 
 def load_configuration(config_path: str) -> Dict:

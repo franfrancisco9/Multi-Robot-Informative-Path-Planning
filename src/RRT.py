@@ -525,7 +525,7 @@ class InformativeRRTBaseClass():
                         self.update_observations_and_model(path, i)
                         self.agents_full_path[i].extend(path)
                         # print("full path: ", self.agents_full_path[i])
-                        self.budget[i] -= 1000
+                        self.budget[i] -= budget_portion[i]
                         # if self.budget[i] < budget_portion[i]:
                         #     self.budget[i] = 0
                         pbar.update(budget_spent)

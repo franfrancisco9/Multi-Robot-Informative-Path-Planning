@@ -543,7 +543,7 @@ def importance_sampling_with_progressive_correction(
 
 def calculate_bic(log_likelihood: float, num_params: int, num_data_points: int) -> float:
     """Calculate the Bayesian Information Criterion."""
-    return np.log(-2 * log_likelihood + num_params * np.log(num_data_points))
+    return np.log(-2 * log_likelihood) + num_params * np.log(num_data_points)
 
 
 def estimate_sources_bayesian(
@@ -576,7 +576,7 @@ def estimate_sources_bayesian(
     best_estimate = None
     best_M = 0
 
-    for M in range(2, max_sources + 1):
+    for M in range(1, max_sources + 1):
         prior_x = uniform(loc=0, scale=scenario.workspace_size[0])
         prior_y = uniform(loc=0, scale=scenario.workspace_size[1])
         prior_intensity = uniform(loc=scenario.intensity_range[0], scale=scenario.intensity_range[1])

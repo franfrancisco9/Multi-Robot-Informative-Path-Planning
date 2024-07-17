@@ -6,8 +6,8 @@
         "workspace_size": [40, 40]
       },
       "specific_params": {
-        "1": [5, 35, 100000],
-        "2": [35, 35, 100000]
+        "1": [5, 35, 1000000],
+        "2": [35, 35, 1000000]
       }
     }
   ],
@@ -61,14 +61,14 @@
     "save": true,
     "show": false,
     "seed": 95789,
-    "budget": 100,
-    "d_waypoint_distance": 2.5,
-    "budget_iter": 1,
-    "run_number": "Test",
+    "budget": 5000,
+    "d_waypoint_distance": 1.0,
+    "budget_iter": 5,
+    "run_number": "Semana 30 BIC Test",
     "lambda_b": 1,
     "max_sources": 3,
     "n_samples": 1000, 
     "s_stages":  25,
-    "num_agents": 2
+    "num_agents": 1
   }
 }

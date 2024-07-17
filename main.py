@@ -11,6 +11,7 @@ from src.estimation.estimation import estimate_sources_bayesian
 from src.rrt.rrt import *
 from src.visualization.plot_helper import helper_plot, calculate_differential_entropy
 from src.utils.path_planning_utils import run_number_from_folder, save_run_info, calculate_source_errors
+from src.utils.iterative import plot_current_tree, plot_best_estimate
 
 def load_configuration(config_path: str) -> Dict:
     """Load configuration from a JSON file."""
@@ -83,7 +84,7 @@ def initialize_strategies(config: Dict, args: Dict) -> Dict[str, Callable]:
 
     return strategy_instances
 
-def run_simulations(scenarios: List[PointSourceField], strategy_instances: Dict[str, Callable], args: Dict) -> None:
+def run_simulations(scenarios: List[PointSourceField], strategy_instances: Dict[str, Callable], args: Dict, debug: bool) -> None:
     """Run simulations for all scenarios and strategies."""
     run_number = run_number_from_folder() if args["run_number"] == -1 else args["run_number"]
     print(f"\nRun number: {run_number}\n")
@@ -131,6 +132,13 @@ def run_simulations(scenarios: List[PointSourceField], strategy_instances: Dict[
                     if round_number == args["rounds"]:
                         helper_plot(scenario, scenario_idx, Z_true, Z_pred, std, strategy, RMSE_lists[strategy_name], WRMSE_lists[strategy_name],
                                     Source_lists[strategy_name], Path_lists[strategy_name], args["rounds"], run_number, save=args["save"], show=args["show"])
+                    
+                    if debug:
+                        for agent_idx in range(strategy.num_agents):
+                            plot_current_tree(strategy.tree_nodes[agent_idx], 
+                                              strategy.get_current_node(agent_idx), 
+                                              strategy.get_chosen_branch(agent_idx), 
+                                              scenario)
                     pbar.update(1)
             RMSE_per_scenario[f"Scenario_{scenario_idx}"] = RMSE_lists
             WRMSE_per_scenario[f"Scenario_{scenario_idx}"] = WRMSE_lists
@@ -144,6 +152,7 @@ def run_simulations(scenarios: List[PointSourceField], strategy_instances: Dict[
 def main():
     parser = argparse.ArgumentParser(description="Run path planning scenarios.")
     parser.add_argument('-config', '--config', required=True, help="Path to the configuration JSON file.")
+    parser.add_argument('-debug', '--debug', action='store_true', help="Enable step-by-step debug mode.")
     args = parser.parse_args()
     print("#" * 80)
     print(f"Loading configuration from {args.config}")
@@ -160,7 +169,7 @@ def main():
     print("Scenarios and strategies loaded successfully.")
     print("#" * 80)
     print("Running simulations...")
-    run_simulations(scenarios, strategy_instances, config["args"])
+    run_simulations(scenarios, strategy_instances, config["args"], args.debug)
     print("#" * 80)
     print("Simulations completed successfully.")
     print("#" * 80)

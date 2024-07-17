@@ -9,7 +9,7 @@ import os
 from typing import Tuple, List, Dict
 from src.point_source.point_source import PointSourceField
 
-def run_number_from_folder(folder_path: str = "../images") -> int:
+def run_number_from_folder(folder_path: str = "../../images") -> int:
     """
     Checks in the specified folder for the latest run number and returns the next run number.
 
@@ -26,7 +26,7 @@ def run_number_from_folder(folder_path: str = "../images") -> int:
     next_run_number = max(run_numbers) + 1 if run_numbers else 1
     return next_run_number
 
-def save_run_info(run_number: int, rmse_per_scenario: Dict, wrmse_per_scenario: Dict, entropy_per_scenario: Dict, source_per_scenario: Dict, time_per_scenario: Dict, args: Dict, scenario_classes: List, folder_path: str = "../runs_review") -> None:
+def save_run_info(run_number: int, rmse_per_scenario: Dict, wrmse_per_scenario: Dict, entropy_per_scenario: Dict, source_per_scenario: Dict, time_per_scenario: Dict, args: Dict, scenario_classes: List, folder_path: str = "./runs_review") -> None:
     """
     Saves run information to a file.
 
@@ -39,7 +39,7 @@ def save_run_info(run_number: int, rmse_per_scenario: Dict, wrmse_per_scenario: 
     - time_per_scenario: Dictionary of time taken per scenario.
     - args: Arguments used for the simulations.
     - scenario_classes: List of scenario classes.
-    - folder_path: Path to the folder where run information is saved. Default is "../runs_review".
+    - folder_path: Path to the folder where run information is saved. Default is "./runs_review".
     """
     os.makedirs(folder_path, exist_ok=True)
     filename = os.path.join(folder_path, f"run_{run_number}.txt")

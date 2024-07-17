@@ -1,4 +1,4 @@
-# src/utils/plot_helper.py
+# src/visualization/plot_helper.py
 """
 Helper functions for plotting in path planning.
 - Created by: Francisco Fonseca on July 2024
@@ -11,6 +11,10 @@ import imageio
 from matplotlib import ticker, colors
 from typing import List, Dict, Tuple
 from src.point_source.point_source import PointSourceField
+import warnings
+
+# Ignore for nanmean.
+warnings.simplefilter("ignore", category=RuntimeWarning)
 
 def plot_tree_node(node, ax, color='blue') -> None:
     """
@@ -58,9 +62,11 @@ def helper_plot(scenario, scenario_number: int, z_true: np.ndarray, z_pred: np.n
     - show: If True, displays the generated plots. Default is False.
     """
     strategy_title = f'{path.name} Strategy - Scenario {scenario_number}'
-    if not os.path.exists('../images'):
-        os.makedirs('../images')
-    folder = f'../images/{run_number}'
+    # print current folder
+    print(os.getcwd())
+    if not os.path.exists('./images'):
+        os.makedirs('./images')
+    folder = f'./images/{run_number}'
     if not os.path.exists(folder):
         os.makedirs(folder)
     save_fig_title = f'{folder}/run_{rounds}_scenario_{scenario_number}_path_{path.name}.png'
@@ -341,6 +347,8 @@ def calculate_differential_entropy(std_devs: np.ndarray) -> float:
     - Differential entropy in bits.
     """
     pi_e = np.pi * np.e
+    if np.any(std_devs == 0):
+        std_devs[std_devs == 0] = 1e-6
     entropy_sum = np.sum(np.log(std_devs * np.sqrt(2 * pi_e)))
     differential_entropy = entropy_sum / (np.log(2))
     return differential_entropy

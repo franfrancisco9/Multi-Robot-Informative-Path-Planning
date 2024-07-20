@@ -23,7 +23,7 @@ class PointSourceField:
         gp (GaussianProcessRegressor): Gaussian Process Regressor for field simulation.
     """
 
-    def __init__(self, num_sources: int = 1, workspace_size: Tuple[int, int] = (40, 40), intensity_range: Tuple[int, int] = (10000, 1000000),
+    def __init__(self, num_sources: int = 1, workspace_size: Tuple[int, int, int, int] = (0, 40, 0, 40), intensity_range: Tuple[int, int] = (10000, 1000000),
                  kernel_params: Optional[Dict[str, float]] = None, seed: Optional[int] = None):
         """
         Initializes the point source field model.
@@ -44,8 +44,8 @@ class PointSourceField:
         self.T = 100  # Transmission factor
         self.workspace_size = workspace_size
         self.intensity_range = intensity_range
-        self.x = np.linspace(0, workspace_size[0], 200)
-        self.y = np.linspace(0, workspace_size[1], 200)
+        self.x = np.linspace(workspace_size[0], workspace_size[1], 200)
+        self.y = np.linspace(workspace_size[2], workspace_size[3], 200)
         self.X, self.Y = np.meshgrid(self.x, self.y)
         self.g_truth = self.ground_truth()
         kernel = self.construct_kernel(kernel_params)
@@ -55,22 +55,22 @@ class PointSourceField:
         """Validates input parameters for the class constructor."""
         if num_sources < 1:
             raise ValueError("Number of sources must be at least 1.")
-        if workspace_size[0] <= 0 or workspace_size[1] <= 0:
-            raise ValueError("Workspace dimensions must be positive.")
+        # if workspace_size[0] <= 0 or workspace_size[1] <= 0:
+        #     raise ValueError("Workspace dimensions must be positive.")
         if intensity_range[0] <= 0 or intensity_range[1] <= 0 or intensity_range[0] >= intensity_range[1]:
             raise ValueError("Intensity range must be positive and the lower bound must be less than the upper bound.")
 
     def construct_kernel(self, kernel_params: Optional[Dict[str, float]]) -> RBF:
         """Constructs the Gaussian process kernel."""
         if kernel_params is None:
-            kernel_params = {'sigma': 1, 'l': 1}
-        kernel = C(kernel_params['sigma'], (1e-5, 5)) ** 2 * RBF(kernel_params['l'], (1e-5, 50))
+            kernel_params = {'sigma': 1.0, 'length_scale': 1.0}
+        kernel = C(kernel_params['sigma'], (1e-3, 1e3)) * RBF(kernel_params['length_scale'], (1e-2, 1e2))
         return kernel
 
-    def generate_sources(self, num_sources: int, workspace_size: Tuple[int, int], intensity_range: Tuple[int, int]) -> List[List[float]]:
+    def generate_sources(self, num_sources: int, workspace_size: Tuple[int, int, int, int], intensity_range: Tuple[int, int]) -> List[List[float]]:
         """Generates random sources within the workspace using vectorized operations."""
-        rand_x = np.random.uniform(0, workspace_size[0], num_sources)
-        rand_y = np.random.uniform(0, workspace_size[1], num_sources)
+        rand_x = np.random.uniform(workspace_size[0], workspace_size[1], num_sources)
+        rand_y = np.random.uniform(workspace_size[2], workspace_size[3], num_sources)
         rand_A = np.random.uniform(*intensity_range, num_sources)
         sources = np.column_stack((rand_x, rand_y, rand_A))
         # revert seed   
@@ -102,7 +102,7 @@ class PointSourceField:
         
         # Calculate distances between each waypoint and each source.
         distances = np.linalg.norm(waypoints[:, np.newaxis, :] - source_positions[np.newaxis, :, :], axis=-1)
-        
+        distances = np.maximum(distances, 1e-6)
         # Apply the intensity formula.
         within_r_s = distances <= self.r_s
         outside_r_s = ~within_r_s

@@ -11,6 +11,7 @@ from scipy.spatial import KDTree
 from scipy.stats import uniform
 from typing import List, Tuple, Callable, Optional
 from tqdm import tqdm
+from src.boustrophedon.boustrophedon import Boustrophedon
 from src.estimation.estimation import estimate_sources_bayesian
 from src.rrt.rrt_utils import (
     choose_parent, cost, line_cost, obstacle_free, rewire, near, steer, 
@@ -183,7 +184,7 @@ def point_source_gain_all(self, node: InformativeTreeNode, agent_idx: int) -> fl
 def rrt_tree_generation(self, budget_portion: float, agent_idx: int) -> None:
     distance_travelled = 0
     while distance_travelled < budget_portion:
-        random_point = np.random.rand(2) * self.scenario.workspace_size
+        random_point = np.random.rand(2) * (self.scenario.workspace_size[1] - self.scenario.workspace_size[0], self.scenario.workspace_size[3] - self.scenario.workspace_size[2]) + self.scenario.workspace_size[0], self.scenario.workspace_size[2]
         nearest_node = min(self.tree_nodes[agent_idx], key=lambda node: node_selection_key_distance(node, random_point))
         new_point = steer(nearest_node, random_point, d_max_step=self.d_waypoint_distance)
 
@@ -200,7 +201,7 @@ def rrt_tree_generation(self, budget_portion: float, agent_idx: int) -> None:
 def rrt_star_tree_generation(self, budget_portion: float, agent_idx: int) -> None:
     distance_travelled = 0
     while distance_travelled < budget_portion:
-        x_rand = np.random.rand(2) * self.scenario.workspace_size
+        x_rand = np.random.rand(2) * (self.scenario.workspace_size[1] - self.scenario.workspace_size[0], self.scenario.workspace_size[3] - self.scenario.workspace_size[2]) + self.scenario.workspace_size[0], self.scenario.workspace_size[2]
         x_nearest = nearest(self.tree_nodes[agent_idx], x_rand)
         x_new = steer(x_nearest, x_rand, d_max_step=1.0)
         
@@ -227,7 +228,7 @@ def rrt_star_tree_generation(self, budget_portion: float, agent_idx: int) -> Non
 def rig_tree_generation(self, budget_portion: float, agent_idx: int, gain_function: Callable) -> None:
     distance_travelled = 0
     while distance_travelled < budget_portion:
-        random_point = np.random.rand(2) * self.scenario.workspace_size
+        random_point = np.random.rand(2) * (self.scenario.workspace_size[1] - self.scenario.workspace_size[0], self.scenario.workspace_size[3] - self.scenario.workspace_size[2]) + (self.scenario.workspace_size[0], self.scenario.workspace_size[2])
         nearest_node = nearest(self.tree_nodes[agent_idx], random_point)
         new_point = steer(nearest_node, random_point, d_max_step=self.d_waypoint_distance)
 
@@ -251,8 +252,21 @@ def rig_tree_generation(self, budget_portion: float, agent_idx: int, gain_functi
 def gp_information_update(self) -> None:
     self.measurements = sum((agent_measurements for agent_measurements in self.agents_measurements), [])
     self.obs_wp = sum((agent_wp for agent_wp in self.agents_obs_wp), [])
-    if len(self.measurements) % 10 == 0 and len(self.measurements) > 0:
+    self.full_path = sum((agent_path for agent_path in self.agents_full_path), [])
+    if len(self.measurements) % 5 == 0 and len(self.measurements) > 0:
         self.scenario.gp.fit(self.obs_wp, self.measurements)
+        if hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
+            estimates, _, bic = estimate_sources_bayesian(
+                self.full_path, self.measurements, self.lambda_b,
+                self.max_sources, self.n_samples, self.s_stages, self.scenario
+            )
+            # print (f"Estimated {len(estimates)//3} sources: {estimates}")
+            # print (f"BIC: {bic}")
+            if bic > self.best_bic:
+                print(f"\nEstimated {len(estimates)//3} sources: {estimates}")
+                print(f"\nBEST BIC FROM GP: {bic}")
+                self.best_bic = bic
+                self.best_estimates = estimates.reshape((-1, 3))
 
 def source_metric_information_update(self) -> None:
     self.measurements = sum((agent_measurements for agent_measurements in self.agents_measurements), [])
@@ -328,10 +342,7 @@ def informative_source_metric_path_selection(self, agent_idx: int, current_posit
                 break
             path.append(node)
             self.information_update() 
-            current_budget -= np.linalg.norm(node - current_position)
-        # if path == []:
-        #     # we still need to move to at least one node so we select the first node
-        #     path.append(current_position, possible_path[0])
+            current_budget -= np.linalg.norm(node - current_position) if path == [] else np.linalg.norm(node - path[-1])
         return path
     return possible_path
 
@@ -345,7 +356,12 @@ def bias_beta_path_selection(self, agent_idx: int, current_position: Optional[np
 
     self.uncertainty_reduction.append(np.mean(stds))
     acquisition_values = mu_normalized + self.beta_t * stds_normalized
-    
+    # give bonus to the closest best estimate nearest to current position 
+    if current_position is not None and hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
+        distances = [np.linalg.norm(current_position - estimate[:2]) for estimate in self.best_estimates]
+        bonus = 1 - np.tanh(np.array(distances) / 2)
+        for i, estimate in enumerate(self.best_estimates):
+            acquisition_values += bonus[i] * np.exp(-np.linalg.norm(leaf_points - estimate[:2], axis=1))
     max_acq_idx = np.argmax(acquisition_values)
     selected_leaf = leaf_nodes[max_acq_idx]
     
@@ -374,6 +390,7 @@ class InformativeRRTBaseClass:
         self.time_taken = 0
         self.new_scenario = None
         self.Z_pred = None
+        self.best_bic = -np.inf
 
         self.n_samples = n_samples
         self.s_stages = s_stages
@@ -381,7 +398,7 @@ class InformativeRRTBaseClass:
         self.max_sources = max_sources
 
         if self.num_agents > 1:
-            self.agent_positions = [np.array([0.5 + i * (self.scenario.workspace_size[0] - 1) / (num_agents - 1), 0.5]) for i in range(num_agents)]
+            self.agent_positions = [np.array([self.scenario.workspace_size[0] + 0.5 + i * (self.scenario.workspace_size[1] - 1) / (num_agents - 1), self.scenario.workspace_size[2] + 0.5]) for i in range(num_agents)]
         else:
             self.agent_positions = [np.array([0.5, 0.5])]
         self.agents_trees = [TreeCollection() for _ in range(num_agents)]
@@ -402,12 +419,46 @@ class InformativeRRTBaseClass:
         for i in range(self.num_agents):
             self.initialize_trees(self.agent_positions[i], i)
         start_time = time.time()
+        closest = None
         with tqdm(total=sum(self.budget), desc="Running " + str(self.num_agents) + " Agent " + self.name) as pbar:
             while any(b > 0 for b in self.budget):
                 for i in range(self.num_agents):
                     if self.budget[i] > 0:
                         self.tree_generation(self.budget[i], i)
-                        path = self.path_selection(i, self.agents_full_path[i][-1] if self.agents_full_path[i] else None)
+                        # if budget spent greater or equal than 2/3 of the budget, then do boustroped path selection
+                        if self.budget[i] <= 7/8 * budget_portion[i] * self.budget_iter:
+                            # first go to the closest best estimat
+                            # if closest is None:
+                            #     closest = np.argmin([np.linalg.norm(self.agents_full_path[i][-1] - estimate[:2]) for estimate in self.best_estimates])
+                            #     print(f"Closest: {closest}")
+                            #     self.agents_full_path[i].append(self.best_estimates[closest][:2])
+                            #     self.update_observations_and_model([self.best_estimates[closest][:2]], i)
+                            path = bias_beta_path_selection(self, i, self.agents_full_path[i][-1] if self.agents_full_path[i] else None)
+                            # # create a scneario around the urrent last best estimate with + 5 -5 in x and y
+                            # last_estimate = self.best_estimates[-1] if hasattr(self, 'best_estimates') and self.best_estimates.size > 0 else None
+                            # if last_estimate is not None:
+                            #     scenario = PointSourceField(num_sources=1, workspace_size=(last_estimate[0] - 5, last_estimate[0] + 5, last_estimate[1] - 5, last_estimate[1] + 5),
+                            #                                 intensity_range=self.scenario.intensity_range)
+                            #     scenario.update_source(0, *last_estimate)
+                            #     boustrophedon = Boustrophedon(scenario=scenario, budget=self.budget[i], line_spacing=self.d_waypoint_distance)
+                            #     boustrophedon.run()
+                            #     path = boustrophedon.full_path
+                            #     path = [np.array([x, y]) for x, y in path.T]
+                            #     budget_spent = self.calculate_budget_spent(path)
+                            #     self.update_observations_and_model(path, i)
+                            #     self.agents_full_path[i].extend(path)
+                            #     self.budget[i] -= budget_spent
+                            #     pbar.update(budget_spent)
+                            #     self.initialize_trees(path[-1], i)
+                            # self.update_observations_and_model(path, i)
+                            # self.agents_full_path[i].extend(path)
+                            # budget_spent = self.calculate_budget_spent(path)
+                            # self.budget[i] -= budget_spent
+                            # pbar.update(budget_spent)
+                            # gp_information_update(self)
+                            # continue
+                        else:
+                            path = self.path_selection(i, self.agents_full_path[i][-1] if self.agents_full_path[i] else None)
                         budget_spent = self.calculate_budget_spent(path)
                         self.update_observations_and_model(path, i)
                         self.agents_full_path[i].extend(path)
@@ -416,7 +467,7 @@ class InformativeRRTBaseClass:
                         pbar.update(budget_spent)
                         if len(path) > 0 and self.budget[i] > 0:
                             self.initialize_trees(path[-1], i)
-                self.information_update()
+                        self.information_update() if self.budget[i] > 1/8 * budget_portion[i] * self.budget_iter else gp_information_update(self)
         self.time_taken = time.time() - start_time
         return self.finalize_all_agents()
 
@@ -517,7 +568,7 @@ class RRTRIG_PointSourceInformative_SourceMetric_PathPlanning(InformativeRRTBase
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.best_estimates = np.array([])
-        self.best_bic = -np.inf
+        
         self.name = "RRTRIG_PointSourceInformative_SourceMetric_Path"
 
     def tree_generation(self, budget_portion: float, agent_idx: int) -> None:
@@ -533,7 +584,7 @@ class RRTRIG_PointSourceInformative_Distance_SourceMetric_PathPlanning(Informati
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.best_estimates = np.array([])
-        self.best_bic = -np.inf
+        
         self.name = "RRTRIG_PointSourceInformative_Distance_SourceMetric_Path"
 
     def tree_generation(self, budget_portion: float, agent_idx: int) -> None:
@@ -549,7 +600,7 @@ class RRTRIG_PointSourceInformative_DistanceRotation_SourceMetric_PathPlanning(I
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.best_estimates = np.array([])
-        self.best_bic = -np.inf
+        
         self.name = "RRTRIG_PointSourceInformative_DistanceRotation_SourceMetric_Path"
 
     def tree_generation(self, budget_portion: float, agent_idx: int) -> None:
@@ -565,7 +616,7 @@ class RRTRIG_PointSourceInformative_All_SourceMetric_PathPlanning(InformativeRRT
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.best_estimates = np.array([])
-        self.best_bic = -np.inf
+        
         self.name = "RRTRIG_PointSourceInformative_All_SourceMetric_Path"
 
     def tree_generation(self, budget_portion: float, agent_idx: int) -> None:

@@ -4,7 +4,7 @@ Boustrophedon path planner.
 - Created by: Francisco Fonseca on July 2024
 """
 import numpy as np
-from src.boustrophedon import bspline
+from src.boustrophedon.bspline import bspline
 
 class Boustrophedon():
     def __init__(self, scenario, d_waypoint_distance=2.5, budget=375, line_spacing=5):
@@ -30,12 +30,12 @@ class Boustrophedon():
         """
         Generates a Boustrophedon path within a specified distance budget.
         """
-        x_coords = np.arange(0.5, self.workspace_size[0], self.line_spacing)
-        if x_coords[-1] + 0.5 != self.workspace_size[0]:
+        x_coords = np.arange(self.workspace_size[0] + 0.5, self.workspace_size[1], self.line_spacing)
+        if x_coords[-1] + 0.5 != self.workspace_size[1]:
             x_coords = np.append(x_coords, self.workspace_size[0] - 0.5)
         
-        y_up = self.workspace_size[1] - 0.5
-        y_down = 0.5
+        y_up = self.workspace_size[3] - 0.5
+        y_down = self.workspace_size[2] + 0.5
 
         cv = []
         for i, x in enumerate(x_coords):

@@ -114,8 +114,8 @@ def importance_sampling_with_progressive_correction(
         covariances = np.cov(resampled_samples, rowvar=False)
         
         perturbations = multivariate_normal.rvs(mean=means, cov=covariances * alpha, size=n_samples)
-        perturbations[:, 0] = np.clip(perturbations[:, 0], 0, scenario.workspace_size[0])
-        perturbations[:, 1] = np.clip(perturbations[:, 1], 0, scenario.workspace_size[1])
+        perturbations[:, 0] = np.clip(perturbations[:, 0], scenario.workspace_size[0], scenario.workspace_size[1])
+        perturbations[:, 1] = np.clip(perturbations[:, 1], scenario.workspace_size[2], scenario.workspace_size[3])
         perturbations[:, 2] = np.clip(perturbations[:, 2], scenario.intensity_range[0], scenario.intensity_range[1])
         
         theta_samples = perturbations
@@ -158,8 +158,8 @@ def estimate_sources_bayesian(
     best_M = 0
 
     for M in range(1, max_sources + 1):
-        prior_x = uniform(loc=0, scale=scenario.workspace_size[0])
-        prior_y = uniform(loc=0, scale=scenario.workspace_size[1])
+        prior_x = uniform(loc=scenario.workspace_size[0], scale=scenario.workspace_size[1])
+        prior_y = uniform(loc=scenario.workspace_size[2], scale=scenario.workspace_size[3])
         prior_intensity = uniform(loc=scenario.intensity_range[0], scale=scenario.intensity_range[1])
         prior_dist = [prior_x, prior_y, prior_intensity] * M
         

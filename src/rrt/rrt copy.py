@@ -19,9 +19,6 @@ from src.rrt.rrt_utils import (
     InformativeTreeNode, TreeNode, TreeCollection
 )
 from src.point_source.point_source import PointSourceField
-import os
-from matplotlib import ticker, colors
-
 
 # Helper function to calculate suppression factor
 def calculate_suppression_factor(node_point: np.ndarray, source: np.ndarray, other_sources: List[np.ndarray]) -> float:
@@ -138,26 +135,11 @@ def point_source_gain_all(self, node: InformativeTreeNode, agent_idx: int) -> fl
         x_t, y_t = node.point
         point_source_gain = 0
         other_sources = [s for s in self.best_estimates]
-        
-                    
         if hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
-            # Using the last agent position find the estiomate which is closest to the current position so that in the end we can give a bonus to the closest estimate
-            min_dist = np.inf
-            best_estimate = None
-            for estimate in self.best_estimates:
-                dist = np.linalg.norm(estimate[:2] - self.agent_positions[agent_idx])
-                if dist < min_dist:
-                    min_dist = dist
-                    best_estimate = estimate
-
             for source in self.best_estimates:
                 d_src = np.linalg.norm([x_t - source[0], y_t - source[1]])
                 F_src = calculate_suppression_factor(node.point, source, other_sources)
-                        
                 point_source_gain += (1 + np.exp(-(d_src - 2)**2 / (2 * 16))) * F_src
-                if  np.allclose(source, best_estimate):
-                    point_source_gain += 1 / (1 + np.exp((d_src - 2) / 16))
-
             distance_penalty_val = distance_penalty(node)
             rotation_penalty_val = rotation_penalty(node)
             exploitation_penalty_val = exploitation_penalty(node)
@@ -166,7 +148,7 @@ def point_source_gain_all(self, node: InformativeTreeNode, agent_idx: int) -> fl
             # print(f"Rotation penalty: {rotation_penalty_val}")
             # print(f"Exploitation penalty: {exploitation_penalty_val}")
             # print(f"Final gain: {point_source_gain - distance_penalty_val - rotation_penalty_val - exploitation_penalty_val}")
-            return point_source_gain - distance_penalty_val - rotation_penalty_val - exploitation_penalty_val
+            return point_source_gain - exploitation_penalty_val#- distance_penalty_val - rotation_penalty_val - exploitation_penalty_val
         else:
             return 0
 
@@ -272,7 +254,7 @@ def gp_information_update(self) -> None:
     self.obs_wp = sum((agent_wp for agent_wp in self.agents_obs_wp), [])
     self.full_path = sum((agent_path for agent_path in self.agents_full_path), [])
     if len(self.measurements) > 0 and len(self.measurements) % 5 == 0:
-        self.scenario.gp.fit(self.obs_wp, np.log10(self.measurements))
+        self.scenario.gp.fit(self.obs_wp, self.measurements)
         if hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
             estimates, _, bic = estimate_sources_bayesian(
                 self.full_path, self.measurements, self.lambda_b,
@@ -290,18 +272,18 @@ def source_metric_information_update(self) -> None:
     print("\nUpdating information\n")
     self.measurements = sum((agent_measurements for agent_measurements in self.agents_measurements), [])
     self.full_path = sum((agent_path for agent_path in self.agents_full_path), [])
-    if  len(self.measurements) > 25:
+    if  len(self.measurements) > 20:
         estimates, _, bic = estimate_sources_bayesian(
             self.full_path, self.measurements, self.lambda_b,
             self.max_sources, self.n_samples, self.s_stages, self.scenario
         )
-        # print(f"\nEstimated {len(estimates)//3} sources: {estimates}")
-        # print(f"\nBIC: {bic}")
-        # if bic > self.best_bic:
         print(f"\nEstimated {len(estimates)//3} sources: {estimates}")
-        print(f"\nBEST BIC: {bic}")
-        self.best_bic = bic
-        self.best_estimates = estimates.reshape((-1, 3))
+        print(f"\nBIC: {bic}")
+        if bic > self.best_bic:
+            print(f"\nEstimated {len(estimates)//3} sources: {estimates}")
+            print(f"\nBEST BIC: {bic}")
+            self.best_bic = bic
+            self.best_estimates = estimates.reshape((-1, 3))
 
 # Path Selection Functions
 
@@ -379,19 +361,10 @@ def bias_beta_path_selection(self, agent_idx: int, current_position: Optional[np
     acquisition_values = mu_normalized + self.beta_t * stds_normalized
     # give bonus to the closest best estimate nearest to current position 
     if current_position is not None and hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
-        # find the closest best estimate to the current position 
-        min_dist = np.inf
-        best_estimate = None
-        for estimate in self.best_estimates:
-            dist = np.linalg.norm(estimate[:2] - current_position)
-            if dist < min_dist:
-                min_dist = dist
-                best_estimate = estimate
-        # give bonus to the closest best estimate
-        for i, node in enumerate(leaf_nodes):
-            dist = np.linalg.norm(node.point - best_estimate[:2])
-            acquisition_values[i] += 1 / (1 + np.exp((dist - 2) / 16))
-
+        distances = [np.linalg.norm(current_position - estimate[:2]) for estimate in self.best_estimates]
+        bonus = 1 - np.tanh(np.array(distances) / 2)
+        for i, estimate in enumerate(self.best_estimates):
+            acquisition_values += bonus[i] * np.exp(-np.linalg.norm(leaf_points - estimate[:2], axis=1))
     max_acq_idx = np.argmax(acquisition_values)
     selected_leaf = leaf_nodes[max_acq_idx]
     
@@ -448,49 +421,6 @@ class InformativeRRTBaseClass:
         self.tree_nodes[agent_idx] = [self.agents_roots[agent_idx]]
         self.trees.add(self.agents_roots[agent_idx])
 
-    def plot_current_state(self, iteration: int, save_dir: str) -> None:
-        fig, axs = plt.subplots(1, 2, figsize=(20, 8), constrained_layout=True)
-        fig.suptitle(f'Iteration {iteration}', fontsize=16)
-
-        max_log_value = np.ceil(np.log10(np.max(self.scenario.g_truth))) if np.max(self.scenario.g_truth) != 0 else 1
-        levels = np.logspace(0, max_log_value, int(max_log_value) + 1)
-        cmap = plt.get_cmap('Greens_r', len(levels) - 1)
-        
-        # Plot ground truth
-        cs_true = axs[0].contourf(self.scenario.X, self.scenario.Y, self.scenario.g_truth, levels=levels, cmap=cmap, norm=colors.BoundaryNorm(levels, ncolors=cmap.N, clip=True))
-        fig.colorbar(cs_true, ax=axs[0], format=ticker.LogFormatterMathtext())
-        axs[0].set_title('Ground Truth')
-        axs[0].set_xlabel('X')
-        axs[0].set_ylabel('Y')
-        axs[0].set_facecolor(cmap(0))
-
-        # Plot predicted field
-        cs_pred = axs[1].contourf(self.scenario.X, self.scenario.Y, self.Z_pred, levels=levels, cmap=cmap, norm=colors.BoundaryNorm(levels, ncolors=cmap.N, clip=True))
-        fig.colorbar(cs_pred, ax=axs[1], format=ticker.LogFormatterMathtext())
-        axs[1].set_title('Predicted Field')
-        
-        # Plot paths and waypoints
-        colors_path = ['b', 'c', 'm', 'y', 'k', 'w']
-        for i in range(self.num_agents):
-            current_path = np.array(self.agents_full_path[i]).reshape(-1, 2)
-            if current_path.size > 0:
-                axs[1].plot(current_path[:, 0], current_path[:, 1], label=f'Agent {i+1} Path', color=colors_path[i % len(colors_path)], linewidth=1)
-            current_wp = np.array(self.agents_obs_wp[i]).reshape(-1, 2)
-            if current_wp.size > 0:
-                axs[1].plot(current_wp[:, 0], current_wp[:, 1], 'ro', markersize=2)
-
-        # Plot sources
-        for source in self.scenario.sources:
-            axs[1].plot(source[0], source[1], 'rX', markersize=10, label='Source')
-        
-        if hasattr(self, 'best_estimates'):
-            for est_source in self.best_estimates:
-                axs[1].plot(est_source[0], est_source[1], 'yx', markersize=10, label='Estimated Source')
-
-        axs[1].legend(loc='center left', bbox_to_anchor=(1, 0.5))
-        plt.savefig(os.path.join(save_dir, f'iteration_{iteration}.png'))
-        plt.close(fig)
-
     def run(self) -> Tuple[np.ndarray, np.ndarray]:
         budget_portion = [budget / self.budget_iter for budget in self.budget]
 
@@ -498,39 +428,58 @@ class InformativeRRTBaseClass:
             self.initialize_trees(self.agent_positions[i], i)
         start_time = time.time()
         closest = None
-        save_dir = './images/step_by_step'
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
         with tqdm(total=sum(self.budget), desc="Running " + str(self.num_agents) + " Agent " + self.name) as pbar:
-            iteration = 0
             while any(b > 0 for b in self.budget):
-                paths = []
                 for i in range(self.num_agents):
                     if self.budget[i] > 0:
                         self.tree_generation(budget_portion[i], i)
-                        if self.budget[i] <= 1/3 * budget_portion[i] * self.budget_iter:
+                        # if budget spent greater or equal than 2/3 of the budget, then do boustroped path selection
+                        if self.budget[i] <= 1/8 * budget_portion[i] * self.budget_iter:
+                            print("BIAS", self.budget[i])
+                            # first go to the closest best estimat
+                            # if closest is None:
+                            #     closest = np.argmin([np.linalg.norm(self.agents_full_path[i][-1] - estimate[:2]) for estimate in self.best_estimates])
+                            #     print(f"Closest: {closest}")
+                            #     self.agents_full_path[i].append(self.best_estimates[closest][:2])
+                            #     self.update_observations_and_model([self.best_estimates[closest][:2]], i)
                             path = bias_beta_path_selection(self, i, self.agents_full_path[i][-1] if self.agents_full_path[i] else None)
+                            # # create a scneario around the urrent last best estimate with + 5 -5 in x and y
+                            # last_estimate = self.best_estimates[-1] if hasattr(self, 'best_estimates') and self.best_estimates.size > 0 else None
+                            # if last_estimate is not None:
+                            #     scenario = PointSourceField(num_sources=1, workspace_size=(last_estimate[0] - 5, last_estimate[0] + 5, last_estimate[1] - 5, last_estimate[1] + 5),
+                            #                                 intensity_range=self.scenario.intensity_range)
+                            #     scenario.update_source(0, *last_estimate)
+                            #     boustrophedon = Boustrophedon(scenario=scenario, budget=self.budget[i], line_spacing=self.d_waypoint_distance)
+                            #     boustrophedon.run()
+                            #     path = boustrophedon.full_path
+                            #     path = [np.array([x, y]) for x, y in path.T]
+                            #     budget_spent = self.calculate_budget_spent(path)
+                            #     self.update_observations_and_model(path, i)
+                            #     self.agents_full_path[i].extend(path)
+                            #     self.budget[i] -= budget_spent
+                            #     pbar.update(budget_spent)
+                            #     self.initialize_trees(path[-1], i)
+                            # self.update_observations_and_model(path, i)
+                            # self.agents_full_path[i].extend(path)
+                            # budget_spent = self.calculate_budget_spent(path)
+                            # self.budget[i] -= budget_spent
+                            # pbar.update(budget_spent)
+                            # gp_information_update(self)
+                            # continue
                         else:
+                            print("BE")
                             path = self.path_selection(i, self.agents_full_path[i][-1] if self.agents_full_path[i] else None)
-                        paths.append((i, path))
+                        budget_spent = self.calculate_budget_spent(path)
+                        self.update_observations_and_model(path, i)
+                        self.agents_full_path[i].extend(path)
+                        self.budget[i] -= budget_spent
 
-                for i, path in paths:
-                    budget_spent = self.calculate_budget_spent(path)
-                    self.update_observations_and_model(path, i)
-                    self.agents_full_path[i].extend(path)
-                    self.budget[i] -= budget_spent
-
-                    pbar.update(budget_spent)
-                    if len(path) > 0 and self.budget[i] > 0:
-                        self.initialize_trees(path[-1], i)
-                    self.information_update() if self.budget[i] > 1/3 * budget_portion[i] * self.budget_iter else gp_information_update(self)
-                    self.plot_current_state(iteration, save_dir)
-
-                iteration += 1
-
+                        pbar.update(budget_spent)
+                        if len(path) > 0 and self.budget[i] > 0:
+                            self.initialize_trees(path[-1], i)
+                        self.information_update() if self.budget[i] > 1/8 * budget_portion[i] * self.budget_iter else gp_information_update(self)
         self.time_taken = time.time() - start_time
         return self.finalize_all_agents()
-
 
     def update_observations_and_model(self, path: List[np.ndarray], agent_idx: int) -> None:
         if path:
@@ -538,13 +487,6 @@ class InformativeRRTBaseClass:
                 measurement = self.scenario.simulate_measurements([point])[0]
                 self.agents_measurements[agent_idx].append(measurement)
                 self.agents_obs_wp[agent_idx].append(point)
-                self.obs_wp = sum((agent_wp for agent_wp in self.agents_obs_wp), [])
-                self.measurements = sum((agent_measurements for agent_measurements in self.agents_measurements), [])
-                self.full_path = sum((agent_path for agent_path in self.agents_full_path), [])
-                self.obs_wp = np.array(self.obs_wp)
-                self.full_path = np.array(self.full_path).reshape(-1, 2).T
-                self.Z_pred, std = self.scenario.predict_spatial_field(self.obs_wp, np.array(self.measurements))
-
 
     def calculate_budget_spent(self, path: List[np.ndarray]) -> float:
         if not path:
@@ -604,7 +546,6 @@ class InformativeRRTBaseClass:
             current_node = current_node.parent
         branch.reverse()
         return branch
-
 class RRT_Random_GP_PathPlanning(InformativeRRTBaseClass):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

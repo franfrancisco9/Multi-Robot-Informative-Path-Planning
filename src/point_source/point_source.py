@@ -63,7 +63,7 @@ class PointSourceField:
     def construct_kernel(self, kernel_params: Optional[Dict[str, float]]) -> RBF:
         """Constructs the Gaussian process kernel."""
         if kernel_params is None:
-            kernel_params = {'sigma': 1.0, 'length_scale': 1.0}
+            kernel_params = {'sigma': 3.0, 'length_scale': 4.0}
         kernel = C(kernel_params['sigma'], (1e-3, 1e3)) * RBF(kernel_params['length_scale'], (1e-2, 1e2))
         return kernel
 

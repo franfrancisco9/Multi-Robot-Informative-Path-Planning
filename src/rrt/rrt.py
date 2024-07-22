@@ -7,7 +7,7 @@ RRT (Rapidly-exploring Random Trees) path planning implementation.
 import numpy as np
 import time
 from matplotlib import pyplot as plt
-from scipy.spatial import KDTree
+from scipy.spatial import KDTree, distance
 from scipy.stats import uniform
 from typing import List, Tuple, Callable, Optional
 from tqdm import tqdm
@@ -21,7 +21,6 @@ from src.rrt.rrt_utils import (
 from src.point_source.point_source import PointSourceField
 import os
 from matplotlib import ticker, colors
-
 
 # Helper function to calculate suppression factor
 def calculate_suppression_factor(node_point: np.ndarray, source: np.ndarray, other_sources: List[np.ndarray]) -> float:
@@ -49,10 +48,10 @@ def point_source_gain_no_penalties(self, node: InformativeTreeNode, agent_idx: i
         point_source_gain = 0
         other_sources = [s for s in self.best_estimates]
         if hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
-            for source in self.best_estimates:
-                d_src = np.linalg.norm([x_t - source[0], y_t - source[1]])
-                F_src = calculate_suppression_factor(node.point, source, other_sources)
-                point_source_gain += (1 + np.exp(-(d_src - 2)**2 / 2*16)) * F_src
+            closest_source = min(self.best_estimates, key=lambda source: np.linalg.norm([self.agents_full_path[agent_idx][-1][0] - source[0], self.agents_full_path[agent_idx][-1][1] - source[1]]))
+            d_src = np.linalg.norm([x_t - closest_source[0], y_t - closest_source[1]])
+            F_src = calculate_suppression_factor(node.point, closest_source, other_sources)
+            point_source_gain += (1 + np.exp(-(d_src - 2)**2 / 2*16)) * F_src
             return point_source_gain
         else:
             return 0
@@ -161,11 +160,6 @@ def point_source_gain_all(self, node: InformativeTreeNode, agent_idx: int) -> fl
             distance_penalty_val = distance_penalty(node)
             rotation_penalty_val = rotation_penalty(node)
             exploitation_penalty_val = exploitation_penalty(node)
-            # print(f"Point source gain: {point_source_gain}")
-            # print(f"Distance penalty: {distance_penalty_val}")
-            # print(f"Rotation penalty: {rotation_penalty_val}")
-            # print(f"Exploitation penalty: {exploitation_penalty_val}")
-            # print(f"Final gain: {point_source_gain - distance_penalty_val - rotation_penalty_val - exploitation_penalty_val}")
             return point_source_gain - distance_penalty_val - rotation_penalty_val - exploitation_penalty_val
         else:
             return 0
@@ -186,7 +180,6 @@ def point_source_gain_all(self, node: InformativeTreeNode, agent_idx: int) -> fl
             n_obs_wp = 0
             for i in range(len(self.agent_positions)):
                 n_obs_wp += len([obs_wp for obs_wp in self.agents_obs_wp[i] if np.linalg.norm(node.point - obs_wp) < self.d_waypoint_distance*2])
-            # print(f"n_obs_wp: {n_obs_wp}")
             return np.exp(0.5 * n_obs_wp)
         return 1
 
@@ -202,7 +195,7 @@ def point_source_gain_all(self, node: InformativeTreeNode, agent_idx: int) -> fl
 def rrt_tree_generation(self, budget_portion: float, agent_idx: int) -> None:
     distance_travelled = 0
     while distance_travelled < budget_portion:
-        random_point = np.random.rand(2) * (self.scenario.workspace_size[1] - self.scenario.workspace_size[0], self.scenario.workspace_size[3] - self.scenario.workspace_size[2]) + self.scenario.workspace_size[0], self.scenario.workspace_size[2]
+        random_point = np.random.rand(2) * (self.scenario.workspace_size[1] - self.scenario.workspace_size[0], self.scenario.workspace_size[3] - self.scenario.workspace_size[2]) + (self.scenario.workspace_size[0], self.scenario.workspace_size[2])
         nearest_node = min(self.tree_nodes[agent_idx], key=lambda node: node_selection_key_distance(node, random_point))
         new_point = steer(nearest_node, random_point, d_max_step=self.d_waypoint_distance)
 
@@ -219,7 +212,7 @@ def rrt_tree_generation(self, budget_portion: float, agent_idx: int) -> None:
 def rrt_star_tree_generation(self, budget_portion: float, agent_idx: int) -> None:
     distance_travelled = 0
     while distance_travelled < budget_portion:
-        x_rand = np.random.rand(2) * (self.scenario.workspace_size[1] - self.scenario.workspace_size[0], self.scenario.workspace_size[3] - self.scenario.workspace_size[2]) + self.scenario.workspace_size[0], self.scenario.workspace_size[2]
+        x_rand = np.random.rand(2) * (self.scenario.workspace_size[1] - self.scenario.workspace_size[0], self.scenario.workspace_size[3] - self.scenario.workspace_size[2]) + (self.scenario.workspace_size[0], self.scenario.workspace_size[2])
         x_nearest = nearest(self.tree_nodes[agent_idx], x_rand)
         x_new = steer(x_nearest, x_rand, d_max_step=1.0)
         
@@ -271,15 +264,13 @@ def gp_information_update(self) -> None:
     self.measurements = sum((agent_measurements for agent_measurements in self.agents_measurements), [])
     self.obs_wp = sum((agent_wp for agent_wp in self.agents_obs_wp), [])
     self.full_path = sum((agent_path for agent_path in self.agents_full_path), [])
-    if len(self.measurements) > 0 and len(self.measurements) % 5 == 0:
+    if len(self.measurements) > 0: #and len(self.measurements) % 5 == 0:
         self.scenario.gp.fit(self.obs_wp, np.log10(self.measurements))
         if hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
             estimates, _, bic = estimate_sources_bayesian(
                 self.full_path, self.measurements, self.lambda_b,
                 self.max_sources, self.n_samples, self.s_stages, self.scenario
             )
-            # print (f"Estimated {len(estimates)//3} sources: {estimates}")
-            # print (f"BIC: {bic}")
             if bic > self.best_bic:
                 print(f"\nEstimated {len(estimates)//3} sources: {estimates}")
                 print(f"\nBEST BIC FROM GP: {bic}")
@@ -289,15 +280,14 @@ def gp_information_update(self) -> None:
 def source_metric_information_update(self) -> None:
     print("\nUpdating information\n")
     self.measurements = sum((agent_measurements for agent_measurements in self.agents_measurements), [])
+    self.obs_wp = sum((agent_wp for agent_wp in self.agents_obs_wp), [])
     self.full_path = sum((agent_path for agent_path in self.agents_full_path), [])
-    if  len(self.measurements) > 25:
+    self.scenario.gp.fit(self.obs_wp, np.log10(self.measurements))
+    if  len(self.measurements) > 0: #and len(self.measurements) % 5 == 0:
         estimates, _, bic = estimate_sources_bayesian(
             self.full_path, self.measurements, self.lambda_b,
             self.max_sources, self.n_samples, self.s_stages, self.scenario
         )
-        # print(f"\nEstimated {len(estimates)//3} sources: {estimates}")
-        # print(f"\nBIC: {bic}")
-        # if bic > self.best_bic:
         print(f"\nEstimated {len(estimates)//3} sources: {estimates}")
         print(f"\nBEST BIC: {bic}")
         self.best_bic = bic
@@ -313,17 +303,6 @@ def random_path_selection(self, agent_idx: int, current_position: Optional[np.nd
     return trace_path_to_root(selected_leaf)
 
 def informative_source_metric_path_selection(self, agent_idx: int, current_position: Optional[np.ndarray] = None, current_budget: Optional[float] = None) -> List[np.ndarray]: 
-    """
-    Generic path selection strategy for Multi-Agent Informative Source Metric RRT Path Planning algorithms.
-
-    Parameters:
-    - self: Assumes a class that inherits from InformativeRRTBaseClass
-    - agent_idx: The index of the agent in the multi-agent system
-    - current_position: The current position of the agent
-
-    Returns:
-    - path: The selected path for the agent as a list of points.
-    """
     # get current root 
     current_root = self.agents_roots[agent_idx]
     if not current_root:
@@ -340,23 +319,38 @@ def informative_source_metric_path_selection(self, agent_idx: int, current_posit
 
     if not current_leafs:
         return []
+
+    # Remove the current position from the list of leaf nodes if it exists
+    if current_position is not None:
+        current_leafs = [node for node in current_leafs if not np.array_equal(node.point, current_position)]
+        if not current_leafs:
+            return [current_position]
+
     if self.best_estimates.size == 0:
         selected_node = np.random.choice(current_leafs)
     else:
-        # select the max unless it is the current position in that case go to the next best
-        selected_node = max(current_leafs, key=lambda node: node.information)
-        if np.array_equal(selected_node.point, current_position):
-            current_leafs.remove(selected_node)
-            if not current_leafs:
-                return [current_position]
-            selected_node = max(current_leafs, key=lambda node: node.information)
-
+        assigned_source = self.assignments[agent_idx]
+        if assigned_source == -1:
+            # Agent is exploring
+            print(f"Agent {agent_idx} is exploring")
+            selected_node = np.random.choice(current_leafs)
+        else:
+            # Agent is assigned to a source, find the closest leaf to the source
+            assigned_source_position = self.best_estimates[assigned_source][:2]
+            selected_node = min(current_leafs, key=lambda node: np.linalg.norm(node.point - assigned_source_position))
+            print(f"Agent {agent_idx} is assigned to source {assigned_source}")
 
     possible_path = trace_path_to_root(selected_node)
+    # Ensure agent does not get stuck in the same position
+    if len(possible_path) == 1 and np.array_equal(possible_path[0], current_position):
+        current_leafs = [node for node in current_leafs if not np.array_equal(node.point, selected_node.point)]
+        if current_leafs:
+            selected_node = np.random.choice(current_leafs)
+            possible_path = trace_path_to_root(selected_node)
+
     # make sure there is enough budget to do the path, if not stop where the budget ends
     if current_budget is not None and current_position is not None:
         path = []
-        current_budget = current_budget
         for node in possible_path:
             if current_budget - np.linalg.norm(node - current_position) < 0:
                 path.append(node)
@@ -377,20 +371,13 @@ def bias_beta_path_selection(self, agent_idx: int, current_position: Optional[np
 
     self.uncertainty_reduction.append(np.mean(stds))
     acquisition_values = mu_normalized + self.beta_t * stds_normalized
-    # give bonus to the closest best estimate nearest to current position 
-    if current_position is not None and hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
-        # find the closest best estimate to the current position 
-        min_dist = np.inf
-        best_estimate = None
-        for estimate in self.best_estimates:
-            dist = np.linalg.norm(estimate[:2] - current_position)
-            if dist < min_dist:
-                min_dist = dist
-                best_estimate = estimate
-        # give bonus to the closest best estimate
-        for i, node in enumerate(leaf_nodes):
-            dist = np.linalg.norm(node.point - best_estimate[:2])
-            acquisition_values[i] += 1 / (1 + np.exp((dist - 2) / 16))
+
+    # Lower the acquisition value for points near already visited points
+    for i, node in enumerate(leaf_nodes):
+        for visited_point in self.agents_full_path[agent_idx]:
+            dist = np.linalg.norm(node.point - visited_point)
+            if dist < self.d_waypoint_distance:
+                acquisition_values[i] -= 0.1 * (self.d_waypoint_distance - dist) / self.d_waypoint_distance
 
     max_acq_idx = np.argmax(acquisition_values)
     selected_leaf = leaf_nodes[max_acq_idx]
@@ -407,6 +394,7 @@ def bias_beta_path_selection(self, agent_idx: int, current_position: Optional[np
         current_node = current_node.parent 
     path.reverse()
     return path
+
 
 # Base Class and Specific Implementations
 
@@ -431,6 +419,7 @@ class InformativeRRTBaseClass:
         self.s_stages = s_stages
         self.lambda_b = lambda_b
         self.max_sources = max_sources
+        self.assignments = [-1] * num_agents  # Initialize assignments
 
         if self.num_agents > 1:
             self.agent_positions = [np.array([self.scenario.workspace_size[0] + 0.5 + i * (self.scenario.workspace_size[1] - 1) / (num_agents - 1), self.scenario.workspace_size[2] + 0.5]) for i in range(num_agents)]
@@ -442,6 +431,40 @@ class InformativeRRTBaseClass:
         self.agents_full_path = [[] for _ in range(num_agents)]
         self.tree_nodes = [[] for _ in range(num_agents)]
         self.agents_roots = [None] * num_agents
+
+    def assign_agents_to_sources(self):
+        if self.best_estimates.size == 0:
+            return
+        print("\nAssigning agents to sources\n")
+        source_positions = [source[:2] for source in self.best_estimates]
+        agent_positions = self.agent_positions
+
+        num_sources = len(source_positions)
+        num_agents = len(agent_positions)
+
+        if num_sources >= num_agents:
+            # If there are more sources or equal sources than agents, each agent gets the closest source
+            self.assignments = np.argmin(distance.cdist(agent_positions, source_positions), axis=1)
+        else:
+            # If there are more agents than sources, closest agents get sources, and others explore
+            dist_matrix = distance.cdist(agent_positions, source_positions)
+            sorted_indices = np.argsort(dist_matrix, axis=1)
+            assigned_sources = set()
+            self.assignments = [-1] * num_agents  # -1 means agent is exploring
+
+            for agent_idx in range(num_agents):
+                for source_idx in sorted_indices[agent_idx]:
+                    if source_idx not in assigned_sources:
+                        self.assignments[agent_idx] = source_idx
+                        assigned_sources.add(source_idx)
+                        break
+
+            # Agents not assigned to any source will explore
+            for agent_idx in range(num_agents):
+                if self.assignments[agent_idx] == -1:
+                    print(f"Agent {agent_idx} is exploring")
+                else:
+                    print(f"Agent {agent_idx} is assigned to source {self.assignments[agent_idx]}")
 
     def initialize_trees(self, start_position: np.ndarray, agent_idx: int) -> None:
         self.agents_roots[agent_idx] = InformativeTreeNode(start_position)
@@ -498,17 +521,23 @@ class InformativeRRTBaseClass:
             self.initialize_trees(self.agent_positions[i], i)
         start_time = time.time()
         closest = None
-        save_dir = './images/step_by_step'
+        save_dir = './images/step_by_step' + self.name + '/'
+        # create if it does not exist
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
+        # always clean existing images
+        for file in os.listdir(save_dir):
+            os.remove(os.path.join(save_dir, file))
+
         with tqdm(total=sum(self.budget), desc="Running " + str(self.num_agents) + " Agent " + self.name) as pbar:
             iteration = 0
             while any(b > 0 for b in self.budget):
+                self.assign_agents_to_sources()
                 paths = []
                 for i in range(self.num_agents):
                     if self.budget[i] > 0:
                         self.tree_generation(budget_portion[i], i)
-                        if self.budget[i] <= 1/3 * budget_portion[i] * self.budget_iter:
+                        if self.budget[i] <= 1/8 * budget_portion[i] * self.budget_iter:
                             path = bias_beta_path_selection(self, i, self.agents_full_path[i][-1] if self.agents_full_path[i] else None)
                         else:
                             path = self.path_selection(i, self.agents_full_path[i][-1] if self.agents_full_path[i] else None)
@@ -523,14 +552,13 @@ class InformativeRRTBaseClass:
                     pbar.update(budget_spent)
                     if len(path) > 0 and self.budget[i] > 0:
                         self.initialize_trees(path[-1], i)
-                    self.information_update() if self.budget[i] > 1/3 * budget_portion[i] * self.budget_iter else gp_information_update(self)
+                    self.information_update() if self.budget[i] > 1/8 * budget_portion[i] * self.budget_iter else gp_information_update(self)
                     self.plot_current_state(iteration, save_dir)
 
                 iteration += 1
 
         self.time_taken = time.time() - start_time
         return self.finalize_all_agents()
-
 
     def update_observations_and_model(self, path: List[np.ndarray], agent_idx: int) -> None:
         if path:
@@ -544,7 +572,6 @@ class InformativeRRTBaseClass:
                 self.obs_wp = np.array(self.obs_wp)
                 self.full_path = np.array(self.full_path).reshape(-1, 2).T
                 self.Z_pred, std = self.scenario.predict_spatial_field(self.obs_wp, np.array(self.measurements))
-
 
     def calculate_budget_spent(self, path: List[np.ndarray]) -> float:
         if not path:
@@ -561,15 +588,6 @@ class InformativeRRTBaseClass:
         self.obs_wp = np.array(self.obs_wp)
         self.full_path = np.array(self.full_path).reshape(-1, 2).T
 
-        # if hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
-        #     num_sources = len(self.best_estimates)
-        #     self.new_scenario = PointSourceField(num_sources=num_sources, workspace_size=self.scenario.workspace_size,
-        #                                 intensity_range=self.scenario.intensity_range)
-        #     for i, estimate in enumerate(self.best_estimates):
-        #         self.new_scenario.update_source(i, *estimate)
-        #     std = np.zeros_like(self.scenario.g_truth)
-        #     self.Z_pred = self.new_scenario.g_truth
-        # else:
         self.Z_pred, std = self.scenario.predict_spatial_field(self.obs_wp, np.array(self.measurements))
         
         return self.Z_pred, std

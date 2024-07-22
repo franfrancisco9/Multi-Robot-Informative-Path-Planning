@@ -83,9 +83,9 @@ class MultiAgentBoustrophedon:
 
         if num_agents > 1:
             # divide the space in num_agents equal parts and set each start at the start of the next segment
-            self.agent_positions = [np.array([i * self.workspace_size[0] / num_agents, 0.5]) for i in range(num_agents)]
+            self.agent_positions = [np.array([i * self.workspace_size[1] / num_agents, self.workspace_size[0] + 0.5]) for i in range(num_agents)]
         else:
-            self.agent_positions = [np.array([0.5, 0.5])]
+            self.agent_positions = [np.array([self.workspace_size[0] + 0.5, self.workspace_size[2] + 0.5])]
 
     def run(self):
         """
@@ -93,15 +93,15 @@ class MultiAgentBoustrophedon:
         """
         for i in range(self.num_agents):
             start_x = self.agent_positions[i][0]
-            end_x = self.workspace_size[0] - 0.5 if i == self.num_agents - 1 else self.agent_positions[i + 1][0] - self.line_spacing
+            end_x = self.workspace_size[1] - 0.5 if i == self.num_agents - 1 else self.agent_positions[i + 1][0] - self.line_spacing
             budget_per_agent = self.total_budget 
             # print("Start x: ", start_x, "End x: ", end_x, "Budget: ", budget_per_agent)
             x_coords = np.arange(start_x, end_x, self.line_spacing)
             if x_coords[-1] + 0.5 != end_x:
                 x_coords = np.append(x_coords, end_x)
 
-            y_up = self.workspace_size[1] - 0.5
-            y_down = 0.5
+            y_up = self.workspace_size[3] - 0.5
+            y_down = 0.5 + self.workspace_size[2]
 
             cv = []
             for j, x in enumerate(x_coords):

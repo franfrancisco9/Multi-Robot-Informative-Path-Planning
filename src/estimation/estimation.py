@@ -172,9 +172,9 @@ def estimate_sources_bayesian(
         log_likelihood = poisson_log_likelihood(theta_estimate, obs_wp, obs_vals, lambda_b, M)
         num_params = 3 * M
         bic = calculate_bic(log_likelihood, num_params, len(obs_vals))
-        print(f"\nEstimated {M} sources: {theta_estimate}")
-        print(f"\nLog-likelihood: {log_likelihood}")
-        print(f"\nBIC: {bic}")
+        # print(f"\nEstimated {M} sources: {theta_estimate}")
+        # print(f"\nLog-likelihood: {log_likelihood}")
+        # print(f"\nBIC: {bic}")
         if bic > best_bic:
             best_bic = bic
             best_estimate = theta_estimate

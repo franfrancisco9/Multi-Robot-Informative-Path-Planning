@@ -57,7 +57,7 @@ def importance_sampling_with_progressive_correction(
     s_stages: int, 
     prior_dist: List[callable], 
     scenario: 'Scenario', 
-    alpha: float = 0.5
+    alpha: float = 0.01
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Perform importance sampling with progressive correction to estimate source parameters.

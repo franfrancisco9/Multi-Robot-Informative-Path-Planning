@@ -156,7 +156,7 @@ class PointSourceField:
             # Z_true += A_n / (dist**2)
         return Z_true
 
-    def simulate_measurements(self, waypoints: List[Tuple[float, float]], noise_level: float = 0.0001) -> np.ndarray:
+    def simulate_measurements(self, waypoints: List[Tuple[float, float]], noise_level: float = 0.01) -> np.ndarray:
         """Simulates measurements at given waypoints with configurable noise, vectorized version."""
         intensities = self.intensity(waypoints)
         noise = np.random.normal(0, noise_level * intensities)

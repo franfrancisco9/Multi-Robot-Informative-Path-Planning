@@ -264,7 +264,7 @@ def gp_information_update(self) -> None:
     self.measurements = sum((agent_measurements for agent_measurements in self.agents_measurements), [])
     self.obs_wp = sum((agent_wp for agent_wp in self.agents_obs_wp), [])
     self.full_path = sum((agent_path for agent_path in self.agents_full_path), [])
-    if len(self.measurements) > 0: #and len(self.measurements) % 5 == 0:
+    if len(self.measurements) > 0 and len(self.measurements) % 2 == 0:
         self.scenario.gp.fit(self.obs_wp, np.log10(self.measurements))
         if hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
             estimates, _, bic = estimate_sources_bayesian(
@@ -537,7 +537,7 @@ class InformativeRRTBaseClass:
                 for i in range(self.num_agents):
                     if self.budget[i] > 0:
                         self.tree_generation(budget_portion[i], i)
-                        if self.budget[i] <= 1/8 * budget_portion[i] * self.budget_iter:
+                        if self.budget[i] <= 1/2 * budget_portion[i] * self.budget_iter:
                             path = bias_beta_path_selection(self, i, self.agents_full_path[i][-1] if self.agents_full_path[i] else None)
                         else:
                             path = self.path_selection(i, self.agents_full_path[i][-1] if self.agents_full_path[i] else None)
@@ -552,7 +552,7 @@ class InformativeRRTBaseClass:
                     pbar.update(budget_spent)
                     if len(path) > 0 and self.budget[i] > 0:
                         self.initialize_trees(path[-1], i)
-                    self.information_update() if self.budget[i] > 1/8 * budget_portion[i] * self.budget_iter else gp_information_update(self)
+                    self.information_update() if self.budget[i] > 1/2 * budget_portion[i] * self.budget_iter else gp_information_update(self)
                     self.plot_current_state(iteration, save_dir)
 
                 iteration += 1

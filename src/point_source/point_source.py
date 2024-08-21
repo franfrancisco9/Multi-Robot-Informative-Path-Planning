@@ -165,7 +165,7 @@ class PointSourceField:
 
     def predict_spatial_field(self, waypoints: List[Tuple[float, float]], measurements: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Predicts the spatial field based on waypoints and measurements."""
-        measurements_log = np.log10(measurements)
+        measurements_log = np.log10(np.maximum(measurements, 1e-6))
         self.gp.fit(waypoints, measurements_log)
         r = np.column_stack((self.X.ravel(), self.Y.ravel()))
         Z_pred_log, std = self.gp.predict(r, return_std=True)

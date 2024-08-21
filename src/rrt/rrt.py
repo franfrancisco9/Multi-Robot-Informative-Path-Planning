@@ -265,7 +265,7 @@ def gp_information_update(self) -> None:
     self.obs_wp = sum((agent_wp for agent_wp in self.agents_obs_wp), [])
     self.full_path = sum((agent_path for agent_path in self.agents_full_path), [])
     if len(self.measurements) > 0 and len(self.measurements) % 2 == 0:
-        self.scenario.gp.fit(self.obs_wp, np.log10(self.measurements))
+        self.scenario.gp.fit(self.obs_wp, np.log10(np.maximum(self.measurements, 1e-6)))
         if hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
             estimates, _, bic = estimate_sources_bayesian(
                 self.full_path, self.measurements, self.lambda_b,
@@ -282,7 +282,7 @@ def source_metric_information_update(self) -> None:
     self.measurements = sum((agent_measurements for agent_measurements in self.agents_measurements), [])
     self.obs_wp = sum((agent_wp for agent_wp in self.agents_obs_wp), [])
     self.full_path = sum((agent_path for agent_path in self.agents_full_path), [])
-    self.scenario.gp.fit(self.obs_wp, np.log10(self.measurements))
+    self.scenario.gp.fit(self.obs_wp, np.log10(np.maximum(self.measurements, 1e-6)))
     if  len(self.measurements) > 0: #and len(self.measurements) % 5 == 0:
         estimates, _, bic = estimate_sources_bayesian(
             self.full_path, self.measurements, self.lambda_b,
@@ -400,7 +400,7 @@ def bias_beta_path_selection(self, agent_idx: int, current_position: Optional[np
 
 class InformativeRRTBaseClass:
     def __init__(self, scenario: PointSourceField, beta_t: float = 5.0, budget: float = 375, d_waypoint_distance: float = 2.5, num_agents: int = 1,
-                 n_samples: int = 25, s_stages: int = 10, lambda_b: float = 1, max_sources: int = 3, budget_iter: int = 10, **kwargs):
+                 n_samples: int = 25, s_stages: int = 10, lambda_b: float = 1, max_sources: int = 3, budget_iter: int = 10, stage_lambda: float = 0.875, **kwargs):
         self.scenario = scenario
         self.beta_t = beta_t
         self.budget = [budget] * num_agents
@@ -420,6 +420,7 @@ class InformativeRRTBaseClass:
         self.lambda_b = lambda_b
         self.max_sources = max_sources
         self.assignments = [-1] * num_agents  # Initialize assignments
+        self.stage_lambda = stage_lambda
 
         if self.num_agents > 1:
             self.agent_positions = [np.array([self.scenario.workspace_size[0] + 0.5 + i * (self.scenario.workspace_size[1] - 1) / (num_agents - 1), self.scenario.workspace_size[2] + 0.5]) for i in range(num_agents)]
@@ -537,7 +538,7 @@ class InformativeRRTBaseClass:
                 for i in range(self.num_agents):
                     if self.budget[i] > 0:
                         self.tree_generation(budget_portion[i], i)
-                        if self.budget[i] <= 1/2 * budget_portion[i] * self.budget_iter:
+                        if self.budget[i] <= self.stage_lambda * budget_portion[i] * self.budget_iter:
                             path = bias_beta_path_selection(self, i, self.agents_full_path[i][-1] if self.agents_full_path[i] else None)
                         else:
                             path = self.path_selection(i, self.agents_full_path[i][-1] if self.agents_full_path[i] else None)
@@ -552,7 +553,7 @@ class InformativeRRTBaseClass:
                     pbar.update(budget_spent)
                     if len(path) > 0 and self.budget[i] > 0:
                         self.initialize_trees(path[-1], i)
-                    self.information_update() if self.budget[i] > 1/2 * budget_portion[i] * self.budget_iter else gp_information_update(self)
+                    self.information_update() if self.budget[i] > (1-self.stage_lambda) * budget_portion[i] * self.budget_iter else gp_information_update(self)
                     self.plot_current_state(iteration, save_dir)
 
                 iteration += 1

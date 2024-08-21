@@ -49,7 +49,7 @@ class PointSourceField:
         self.X, self.Y = np.meshgrid(self.x, self.y)
         self.g_truth = self.ground_truth()
         kernel = self.construct_kernel(kernel_params)
-        self.gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10, normalize_y=True)
+        self.gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10, normalize_y=False)
 
     def validate_inputs(self, num_sources: int, workspace_size: Tuple[int, int], intensity_range: Tuple[int, int]) -> None:
         """Validates input parameters for the class constructor."""
@@ -63,8 +63,8 @@ class PointSourceField:
     def construct_kernel(self, kernel_params: Optional[Dict[str, float]]) -> RBF:
         """Constructs the Gaussian process kernel."""
         if kernel_params is None:
-            kernel_params = {'sigma': 3.0, 'length_scale': 4.0}
-        kernel = C(kernel_params['sigma'], (1e-3, 1e3)) * RBF(kernel_params['length_scale'], (1e-2, 1e2))
+            kernel_params = {'sigma': 1.0, 'length_scale': 1.0}
+        kernel = C(kernel_params['sigma'], (1e-3, 50)) * RBF(kernel_params['length_scale'], (1e-2, 50))
         return kernel
 
     def generate_sources(self, num_sources: int, workspace_size: Tuple[int, int, int, int], intensity_range: Tuple[int, int]) -> List[List[float]]:

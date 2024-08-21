@@ -303,12 +303,14 @@ def random_path_selection(self, agent_idx: int, current_position: Optional[np.nd
     return trace_path_to_root(selected_leaf)
 
 def informative_source_metric_path_selection(self, agent_idx: int, current_position: Optional[np.ndarray] = None, current_budget: Optional[float] = None) -> List[np.ndarray]: 
-    # get current root 
+    # Get current root 
     current_root = self.agents_roots[agent_idx]
     if not current_root:
         return []
+
     current_leafs = []
-    # from the root we can get the leaf nodes 
+    
+    # From the root we can get the leaf nodes 
     def get_leafs(node):
         if not node.children:
             current_leafs.append(node)
@@ -336,11 +338,12 @@ def informative_source_metric_path_selection(self, agent_idx: int, current_posit
             selected_node = np.random.choice(current_leafs)
         else:
             # Agent is assigned to a source, find the closest leaf to the source
-            assigned_source_position = self.best_estimates[assigned_source][:2]
-            selected_node = min(current_leafs, key=lambda node: np.linalg.norm(node.point - assigned_source_position))
+            assigned_source_position = self.best_estimates[assigned_source][:2] if assigned_source < len(self.best_estimates) else None
+            selected_node = min(current_leafs, key=lambda node: np.linalg.norm(node.point - assigned_source_position)) if assigned_source_position is not None else np.random.choice(current_leafs)
             print(f"Agent {agent_idx} is assigned to source {assigned_source}")
 
     possible_path = trace_path_to_root(selected_node)
+    
     # Ensure agent does not get stuck in the same position
     if len(possible_path) == 1 and np.array_equal(possible_path[0], current_position):
         current_leafs = [node for node in current_leafs if not np.array_equal(node.point, selected_node.point)]
@@ -348,20 +351,20 @@ def informative_source_metric_path_selection(self, agent_idx: int, current_posit
             selected_node = np.random.choice(current_leafs)
             possible_path = trace_path_to_root(selected_node)
 
-    # make sure there is enough budget to do the path, if not stop where the budget ends
+    # Make sure there is enough budget to do the path, if not stop where the budget ends
     if current_budget is not None and current_position is not None:
         path = []
         for node in possible_path:
-            if current_budget - np.linalg.norm(node - current_position) < 0:
+            if current_budget - np.linalg.norm(node - current_position) < self.d_waypoint_distance:
                 path.append(node)
                 break
             path.append(node)
             self.information_update() 
-            current_budget -= np.linalg.norm(node - current_position) if path == [] else np.linalg.norm(node - path[-1])
+            current_budget -= np.linalg.norm(node - current_position) if not path else np.linalg.norm(node - path[-1])
         return path
     return possible_path
 
-def bias_beta_path_selection(self, agent_idx: int, current_position: Optional[np.ndarray] = None) -> List[np.ndarray]:
+def bias_beta_path_selection(self, agent_idx: int, current_position: Optional[np.ndarray] = None, current_budget: Optional[float] = None) -> List[np.ndarray]:
     leaf_nodes = [node for node in self.tree_nodes[agent_idx] if not node.children]
     leaf_points = np.array([node.point for node in leaf_nodes])
     
@@ -383,15 +386,13 @@ def bias_beta_path_selection(self, agent_idx: int, current_position: Optional[np
     selected_leaf = leaf_nodes[max_acq_idx]
     
     path = []
-    current_budget = self.budget[agent_idx]
-    current_node = selected_leaf
-    while current_node is not None:
-        path.append(current_node.point)
-        current_budget -= np.linalg.norm(current_node.point - path[-1]) 
-        if current_budget <= 0:
-            self.budget[agent_idx] = 0
+    while selected_leaf is not None and current_budget is not None and current_budget > 0:
+        path.append(selected_leaf.point)
+        if len(path) > 1:
+            current_budget -= np.linalg.norm(path[-1] - path[-2])
+        if current_budget <= self.d_waypoint_distance:
             break
-        current_node = current_node.parent 
+        selected_leaf = selected_leaf.parent
     path.reverse()
     return path
 
@@ -520,13 +521,15 @@ class InformativeRRTBaseClass:
 
         for i in range(self.num_agents):
             self.initialize_trees(self.agent_positions[i], i)
+        
         start_time = time.time()
-        closest = None
         save_dir = './images/step_by_step' + self.name + '/'
-        # create if it does not exist
+        
+        # Create the directory if it does not exist
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
-        # always clean existing images
+        
+        # Always clean existing images
         for file in os.listdir(save_dir):
             os.remove(os.path.join(save_dir, file))
 
@@ -537,24 +540,29 @@ class InformativeRRTBaseClass:
                 paths = []
                 for i in range(self.num_agents):
                     if self.budget[i] > 0:
-                        self.tree_generation(budget_portion[i], i)
-                        if self.budget[i] <= self.stage_lambda * budget_portion[i] * self.budget_iter:
-                            path = bias_beta_path_selection(self, i, self.agents_full_path[i][-1] if self.agents_full_path[i] else None)
-                        else:
-                            path = self.path_selection(i, self.agents_full_path[i][-1] if self.agents_full_path[i] else None)
-                        paths.append((i, path))
+                        current_budget = budget_portion[i]
+                        while current_budget > self.d_waypoint_distance:
+                            self.tree_generation(budget_portion[i], i)
+                            if self.budget[i] <= self.stage_lambda * budget_portion[i] * self.budget_iter:
+                                path = bias_beta_path_selection(self, i, self.agents_full_path[i][-1] if self.agents_full_path[i] else None, current_budget)
+                            else:
+                                path = self.path_selection(i, self.agents_full_path[i][-1] if self.agents_full_path[i] else None, current_budget)
+                            
+                            paths.append((i, path))
+                            
+                            budget_spent = self.calculate_budget_spent(path)
+                            self.update_observations_and_model(path, i)
+                            self.agents_full_path[i].extend(path)
+                            self.budget[i] -= budget_spent
+                            current_budget -= budget_spent
 
-                for i, path in paths:
-                    budget_spent = self.calculate_budget_spent(path)
-                    self.update_observations_and_model(path, i)
-                    self.agents_full_path[i].extend(path)
-                    self.budget[i] -= budget_spent
-
-                    pbar.update(budget_spent)
-                    if len(path) > 0 and self.budget[i] > 0:
-                        self.initialize_trees(path[-1], i)
-                    self.information_update() if self.budget[i] > (1-self.stage_lambda) * budget_portion[i] * self.budget_iter else gp_information_update(self)
-                    self.plot_current_state(iteration, save_dir)
+                            pbar.update(budget_spent)
+                            
+                            if len(path) > 0 and self.budget[i] > 0:
+                                self.initialize_trees(path[-1], i)
+                            
+                            self.information_update() if self.budget[i] > (self.stage_lambda) * budget_portion[i] * self.budget_iter else gp_information_update(self)
+                self.plot_current_state(iteration, save_dir)
 
                 iteration += 1
 

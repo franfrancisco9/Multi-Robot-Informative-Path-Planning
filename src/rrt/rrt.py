@@ -389,6 +389,7 @@ def bias_beta_path_selection(self, agent_idx: int, current_position: Optional[np
         if len(path) > 1:
             current_budget -= np.linalg.norm(path[-1] - path[-2])
         if current_budget <= self.d_waypoint_distance:
+            path.append(selected_leaf.point)
             break
         selected_leaf = selected_leaf.parent
     path.reverse()

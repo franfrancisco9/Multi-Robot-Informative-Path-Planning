@@ -140,50 +140,36 @@ def point_source_gain_all(self, node: InformativeTreeNode, agent_idx: int) -> fl
         
                     
         if hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
-            # Using the last agent position find the estiomate which is closest to the current position so that in the end we can give a bonus to the closest estimate
-            min_dist = np.inf
-            best_estimate = None
-            for estimate in self.best_estimates:
-                dist = np.linalg.norm(estimate[:2] - self.agent_positions[agent_idx])
-                if dist < min_dist:
-                    min_dist = dist
-                    best_estimate = estimate
-
             for source in self.best_estimates:
                 d_src = np.linalg.norm([x_t - source[0], y_t - source[1]])
                 F_src = calculate_suppression_factor(node.point, source, other_sources)
-                        
-                if  np.allclose(source, best_estimate):
-                    point_source_gain += 1 / (1 + np.exp((d_src - 2) / 16))
-                else:
-                    point_source_gain += (1 + np.exp(-(d_src - 2)**2 / (2 * 16))) * F_src
-
+                point_source_gain += (1 + np.exp(-(d_src - 2)**2 / (32))) * F_src
 
             distance_penalty_val = distance_penalty(node)
-            rotation_penalty_val = rotation_penalty(node)
             exploitation_penalty_val = exploitation_penalty(node)
-            return point_source_gain - distance_penalty_val - rotation_penalty_val - exploitation_penalty_val
+            workspace_penalty_val = workspace_penalty(node)
+            return point_source_gain - distance_penalty_val - exploitation_penalty_val - workspace_penalty_val
         else:
             return 0
 
     def distance_penalty(node: InformativeTreeNode) -> float:
         if node.parent:
-            return np.exp(0.005 * np.linalg.norm(node.point - node.parent.point))
-        return 1
+            return np.exp(0.005 * np.linalg.norm(node.point - node.parent.point)**2)
+        return 0
 
-    def rotation_penalty(node: InformativeTreeNode) -> float:
-        if node.parent:
-            theta_t = np.arctan2(node.point[1] - node.parent.point[1], node.point[0] - node.parent.point[0])
-            return np.exp(0.005 * (theta_t**2) / 0.1)
-        return 1
-
+    def workspace_penalty(node: InformativeTreeNode) -> float:
+        # if inside workspace 0, if not np.inf
+        if node.point[0] < self.scenario.workspace_size[0] or node.point[0] > self.scenario.workspace_size[1] or node.point[1] < self.scenario.workspace_size[2] or node.point[1] > self.scenario.workspace_size[3]:
+            return np.inf
+        return 0
+    
     def exploitation_penalty(node: InformativeTreeNode) -> float:
         if len(self.agents_obs_wp[agent_idx]) > 0:
             n_obs_wp = 0
             for i in range(len(self.agent_positions)):
                 n_obs_wp += len([obs_wp for obs_wp in self.agents_obs_wp[i] if np.linalg.norm(node.point - obs_wp) < self.d_waypoint_distance*2])
-            return np.exp(0.5 * n_obs_wp)
-        return 1
+            return np.exp(5 * n_obs_wp**2)
+        return 0
 
     final_gain = 0
     current_node = node
@@ -546,7 +532,7 @@ class InformativeRRTBaseClass:
 
     def run(self) -> Tuple[np.ndarray, np.ndarray]:
         budget_portion = [budget / self.budget_iter for budget in self.budget]
-
+        max_budget = max(self.budget)
         for i in range(self.num_agents):
             self.initialize_trees(self.agent_positions[i], i)
         
@@ -570,7 +556,7 @@ class InformativeRRTBaseClass:
                     if self.budget[i] > 0:
                         current_budget = budget_portion[i]
                         while current_budget > self.d_waypoint_distance:
-                            self.tree_generation(budget_portion[i], i)
+                            self.tree_generation(max_budget, i)
                             if self.budget[i] <= self.stage_lambda * budget_portion[i] * self.budget_iter:
                                 path = bias_beta_path_selection(self, i, self.agents_full_path[i][-1] if self.agents_full_path[i] else None, current_budget)
                             else:

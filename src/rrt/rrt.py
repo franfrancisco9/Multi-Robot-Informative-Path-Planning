@@ -153,9 +153,11 @@ def point_source_gain_all(self, node: InformativeTreeNode, agent_idx: int) -> fl
                 d_src = np.linalg.norm([x_t - source[0], y_t - source[1]])
                 F_src = calculate_suppression_factor(node.point, source, other_sources)
                         
-                point_source_gain += (1 + np.exp(-(d_src - 2)**2 / (2 * 16))) * F_src
                 if  np.allclose(source, best_estimate):
                     point_source_gain += 1 / (1 + np.exp((d_src - 2) / 16))
+                else:
+                    point_source_gain += (1 + np.exp(-(d_src - 2)**2 / (2 * 16))) * F_src
+
 
             distance_penalty_val = distance_penalty(node)
             rotation_penalty_val = rotation_penalty(node)
@@ -265,7 +267,7 @@ def gp_information_update(self) -> None:
     self.obs_wp = sum((agent_wp for agent_wp in self.agents_obs_wp), [])
     self.full_path = sum((agent_path for agent_path in self.agents_full_path), [])
     if len(self.measurements) > 0 and len(self.measurements) % 2 == 0:
-        self.scenario.gp.fit(self.obs_wp, np.log10(np.maximum(self.measurements, 1e-6)))
+        self.scenario.update(self.obs_wp, np.log10(np.maximum(self.measurements, 1e-6)))
         if hasattr(self, 'best_estimates') and self.best_estimates.size > 0:
             estimates, _, bic = estimate_sources_bayesian(
                 self.full_path, self.measurements, self.lambda_b,
@@ -282,7 +284,7 @@ def source_metric_information_update(self) -> None:
     self.measurements = sum((agent_measurements for agent_measurements in self.agents_measurements), [])
     self.obs_wp = sum((agent_wp for agent_wp in self.agents_obs_wp), [])
     self.full_path = sum((agent_path for agent_path in self.agents_full_path), [])
-    self.scenario.gp.fit(self.obs_wp, np.log10(np.maximum(self.measurements, 1e-6)))
+    self.scenario.update(self.obs_wp, np.log10(np.maximum(self.measurements, 1e-6)))
     if  len(self.measurements) > 0: #and len(self.measurements) % 5 == 0:
         estimates, _, bic = estimate_sources_bayesian(
             self.full_path, self.measurements, self.lambda_b,
@@ -365,26 +367,36 @@ def informative_source_metric_path_selection(self, agent_idx: int, current_posit
     return possible_path
 
 def bias_beta_path_selection(self, agent_idx: int, current_position: Optional[np.ndarray] = None, current_budget: Optional[float] = None) -> List[np.ndarray]:
+    """
+    Selects a path for the agent based on mutual information gain.
+    """
+    # Find leaf nodes in the tree for the current agent
     leaf_nodes = [node for node in self.tree_nodes[agent_idx] if not node.children]
     leaf_points = np.array([node.point for node in leaf_nodes])
     
+    # Predict mean (mu) and standard deviations (stds) using GP for the leaf points
     mu, stds = self.scenario.gp.predict(leaf_points, return_std=True)
-    mu_normalized = (mu - np.mean(mu)) / np.std(mu) if np.std(mu) != 0 else mu
-    stds_normalized = (stds - np.mean(stds)) / np.std(stds) if np.std(stds) != 0 else stds
-
-    self.uncertainty_reduction.append(np.mean(stds))
-    acquisition_values = mu_normalized + self.beta_t * stds_normalized
-
-    # Lower the acquisition value for points near already visited points
-    for i, node in enumerate(leaf_nodes):
-        for visited_point in self.agents_full_path[agent_idx]:
-            dist = np.linalg.norm(node.point - visited_point)
-            if dist < self.d_waypoint_distance:
-                acquisition_values[i] -= 0.1 * (self.d_waypoint_distance - dist) / self.d_waypoint_distance
-
-    max_acq_idx = np.argmax(acquisition_values)
-    selected_leaf = leaf_nodes[max_acq_idx]
     
+    # Compute the covariance matrix for leaf points (K_pi)
+    K_pi = self.scenario.gp.kernel_(leaf_points)
+    
+    # Compute the cross-covariance matrix between leaf points and observation points (K_pio)
+    observed_points = np.array(self.agents_obs_wp[agent_idx])
+    if observed_points.size > 0:
+        K_pio = self.scenario.gp.kernel_(leaf_points, observed_points)
+    else:
+        K_pio = np.zeros((len(leaf_points), 0))  # No observations yet
+
+    # Calculate mutual information for each leaf point
+    mutual_information_values = np.array([
+        mutual_information_gain(K_pi, K_pio, beta_t=self.beta_t) for _ in leaf_points
+    ])
+
+    # Select the leaf node that maximizes the mutual information
+    max_mi_idx = np.argmax(mutual_information_values)
+    selected_leaf = leaf_nodes[max_mi_idx]
+    
+    # Trace back the path to the root for the selected leaf
     path = []
     while selected_leaf is not None and current_budget is not None and current_budget > 0:
         path.append(selected_leaf.point)
@@ -395,6 +407,22 @@ def bias_beta_path_selection(self, agent_idx: int, current_position: Optional[np
         selected_leaf = selected_leaf.parent
     path.reverse()
     return path
+
+def mutual_information_gain(K_pi, K_pio, beta_t: float) -> float:
+    """
+    Calculate the mutual information gain using a modified version that includes a weighting factor (beta_t).
+    
+    K_pi: Covariance matrix for the path points.
+    K_pio: Cross-covariance matrix between path points and observation points.
+    beta_t: Weighting factor to control exploration vs. exploitation.
+    """
+    # Handle the case when there are no observed points
+    if K_pio.shape[1] == 0:
+        return 0  # No mutual information to gain from unobserved points
+    
+    # Modified covariance matrix to include exploration-exploitation factor
+    modified_covariance = np.eye(K_pi.shape[0]) + beta_t * np.dot(K_pio, K_pio.T)
+    return 0.5 * np.log(np.linalg.det(modified_covariance))
 
 
 # Base Class and Specific Implementations

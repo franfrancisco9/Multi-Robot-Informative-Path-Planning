@@ -23,8 +23,8 @@ class PointSourceField:
         gp (GaussianProcessRegressor): Gaussian Process Regressor for field simulation.
     """
 
-    def __init__(self, num_sources: int = 1, workspace_size: Tuple[int, int, int, int] = (0, 40, 0, 40), intensity_range: Tuple[int, int] = (10000, 1000000),
-                 kernel_params: Optional[Dict[str, float]] = None, seed: Optional[int] = None):
+    def __init__(self, num_sources: int = 1, workspace_size: Tuple[int, int, int, int] = (0, 40, 0, 40), obstacles: List = [],
+                 intensity_range: Tuple[int, int] = (10000, 1000000), kernel_params: Optional[Dict[str, float]] = None, seed: Optional[int] = None):
         """
         Initializes the point source field model.
 
@@ -43,13 +43,14 @@ class PointSourceField:
         self.r_d = 0.5  # Detector radius
         self.T = 100  # Transmission factor
         self.workspace_size = workspace_size
+        self.obstacles = obstacles
         self.intensity_range = intensity_range
-        self.x = np.linspace(workspace_size[0], workspace_size[1], 200)
-        self.y = np.linspace(workspace_size[2], workspace_size[3], 200)
+        self.x = np.linspace(workspace_size[0], workspace_size[1], (workspace_size[1] - workspace_size[0]) * 10)
+        self.y = np.linspace(workspace_size[2], workspace_size[3], (workspace_size[3] - workspace_size[2]) * 10)
         self.X, self.Y = np.meshgrid(self.x, self.y)
         self.g_truth = self.ground_truth()
         kernel = self.construct_kernel(kernel_params)
-        self.gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10, normalize_y=False)
+        self.gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10, normalize_y=True)
 
     def validate_inputs(self, num_sources: int, workspace_size: Tuple[int, int], intensity_range: Tuple[int, int]) -> None:
         """Validates input parameters for the class constructor."""
@@ -114,8 +115,8 @@ class PointSourceField:
         intensity_outside = np.where(outside_r_s, source_amplitudes * self.T / (4 * np.pi * distances**2), 0)
         
         # Sum the contributions for each waypoint.
-        total_intensity = np.sum(intensity_within + intensity_outside, axis=-1)
-        # total_intensity = np.sum(source_amplitudes / (distances**2), axis=-1)  # Simplified intensity calculation for testing
+        # total_intensity = np.sum(intensity_within + intensity_outside, axis=-1)
+        total_intensity = np.sum(source_amplitudes / (distances**2), axis=-1)  # Simplified intensity calculation for testing
         return total_intensity
 
     def ground_truth(self):
@@ -156,7 +157,11 @@ class PointSourceField:
             # Z_true += A_n / (dist**2)
         return Z_true
 
-    def simulate_measurements(self, waypoints: List[Tuple[float, float]], noise_level: float = 0.01) -> np.ndarray:
+    def update(self, obs_wp, log_obs_vals):
+        """Update the GP model based on observations."""
+        self.gp.fit(obs_wp, log_obs_vals)
+
+    def simulate_measurements(self, waypoints: List[Tuple[float, float]], noise_level: float = 0.001) -> np.ndarray:
         """Simulates measurements at given waypoints with configurable noise, vectorized version."""
         intensities = self.intensity(waypoints)
         noise = np.random.normal(0, noise_level * intensities)

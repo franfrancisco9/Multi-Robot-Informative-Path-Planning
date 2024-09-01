@@ -57,7 +57,7 @@ def importance_sampling_with_progressive_correction(
     s_stages: int, 
     prior_dist: List[callable], 
     scenario: 'Scenario', 
-    alpha: float = 0.01
+    alpha: float = 0.001
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Perform importance sampling with progressive correction to estimate source parameters.
@@ -125,9 +125,9 @@ def importance_sampling_with_progressive_correction(
 
 def calculate_bic(log_likelihood: float, num_params: int, num_data_points: int) -> float:
     """Calculate the Bayesian Information Criterion."""
-    print("numparams", num_params * np.log(num_data_points))
-    print(2 * log_likelihood)
-    return 2 * log_likelihood #+ num_params * np.log(num_data_points)
+    # print("numparams", num_params * np.log(num_data_points))
+    # print(2 * log_likelihood)
+    return 2 * log_likelihood + num_params * np.log(num_data_points)
 
 def estimate_sources_bayesian(
     obs_wp: np.ndarray, 

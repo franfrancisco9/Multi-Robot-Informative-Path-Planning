@@ -66,7 +66,7 @@ class Boustrophedon():
 
 
 class MultiAgentBoustrophedon:
-    def __init__(self, scenario, num_agents=1, d_waypoint_distance=2.5, budget=375, line_spacing=5):
+    def __init__(self, scenario, num_agents=1, d_waypoint_distance=2.5, budget=375, line_spacing=4):
         """
         Initializes a Boustrophedon path planner for multiple agents.
         """
@@ -75,6 +75,7 @@ class MultiAgentBoustrophedon:
         self.d_waypoint_distance = d_waypoint_distance
         self.total_budget = budget
         self.num_agents = num_agents
+        # line spacing should be such that the number of agents is able to cover the max space given the budget
         self.line_spacing = line_spacing
         self.agents_full_path = [[] for _ in range(num_agents)]
         self.agents_measurements = [[] for _ in range(num_agents)]

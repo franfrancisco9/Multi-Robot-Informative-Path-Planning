@@ -43,11 +43,11 @@ def poisson_log_likelihood(
     # Ensure lambda_j is positive to avoid log(0) issues
     lambda_j = np.maximum(lambda_j, 1e-10)
     # Ensure lambda_j and obs_vals have the same shape
-    if len(lambda_j) != len(obs_vals):
-        print(f"Warning: Mismatch in dimensions. lambda_j: {len(lambda_j)}, obs_vals: {len(obs_vals)}")
-        min_len = min(len(lambda_j), len(obs_vals))
-        lambda_j = lambda_j[:min_len]
-        obs_vals = obs_vals[:min_len]
+    # if len(lambda_j) != len(obs_vals):
+    #     print(f"Warning: Mismatch in dimensions. lambda_j: {len(lambda_j)}, obs_vals: {len(obs_vals)}")
+    #     min_len = min(len(lambda_j), len(obs_vals))
+    #     lambda_j = lambda_j[:min_len]
+    #     obs_vals = obs_vals[:min_len]
     log_pmf = poisson.logpmf(obs_vals, lambda_j)
 
     total_log_likelihood = np.sum(log_pmf)

@@ -385,6 +385,31 @@ def bias_beta_path_selection(self, agent_idx: int, current_position: Optional[np
     mutual_information_values = np.array([
         mutual_information_gain(K_pi, K_pio, beta_t=self.beta_t) for _ in leaf_points
     ])
+    def distance_penalty(node: InformativeTreeNode) -> float:
+        if node.parent:
+            return np.exp(0.5 * np.linalg.norm(node.point - node.parent.point)**2)
+        return 0
+
+    def workspace_penalty(node: InformativeTreeNode) -> float:
+        # if inside workspace 0, if not np.inf
+        if node.point[0] < self.scenario.workspace_size[0] or node.point[0] > self.scenario.workspace_size[1] or node.point[1] < self.scenario.workspace_size[2] or node.point[1] > self.scenario.workspace_size[3]:
+            return np.inf
+        return 0
+    
+    def exploitation_penalty(node: InformativeTreeNode) -> float:
+        if len(self.agents_obs_wp[agent_idx]) > 0:
+            n_obs_wp = 0
+            for i in range(len(self.agent_positions)):
+                n_obs_wp += len([obs_wp for obs_wp in self.agents_obs_wp[i] if np.linalg.norm(node.point - obs_wp) < self.d_waypoint_distance])
+            return np.exp(0.5 * n_obs_wp**2)
+        return 0
+    # apply to the values the penalty functions of distance, workspace and exploitation
+    for i, node in enumerate(leaf_nodes):
+        mutual_information_values[i] -= distance_penalty(node)
+        mutual_information_values[i] -= workspace_penalty(node)
+        mutual_information_values[i] -= exploitation_penalty(node)
+
+        
 
     # Select the leaf node that maximizes the mutual information
     max_mi_idx = np.argmax(mutual_information_values)

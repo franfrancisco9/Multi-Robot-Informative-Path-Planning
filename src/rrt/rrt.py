@@ -6,12 +6,14 @@ RRT (Rapidly-exploring Random Trees) path planning implementation.
 
 import numpy as np
 import time
+import matplotlib
+matplotlib.use('Agg')  # Use a non-interactive backend
 from matplotlib import pyplot as plt
 from scipy.spatial import KDTree, distance
 from scipy.stats import uniform
 from typing import List, Tuple, Callable, Optional
 from tqdm import tqdm
-from threading import Thread, Lock  # Import threading utilities
+from threading import Thread, Lock , current_thread, main_thread # Import threading utilities
 from src.boustrophedon.boustrophedon import Boustrophedon
 from src.estimation.estimation import estimate_sources_bayesian
 from src.rrt.rrt_utils import (
@@ -172,7 +174,7 @@ def point_source_gain_all(self, node: InformativeTreeNode, agent_idx: int) -> fl
             n_obs_wp = 0
             for i in range(len(self.agent_positions)):
                 n_obs_wp += len([obs_wp for obs_wp in self.agents_obs_wp[i] if np.linalg.norm(node.point - obs_wp) < self.d_waypoint_distance])
-            return np.exp(0.5 * n_obs_wp**2)
+            return np.exp(0.05 * n_obs_wp**2)
         return 0
 
     final_gain = 0
@@ -401,7 +403,7 @@ def bias_beta_path_selection(self, agent_idx: int, current_position: Optional[np
             n_obs_wp = 0
             for i in range(len(self.agent_positions)):
                 n_obs_wp += len([obs_wp for obs_wp in self.agents_obs_wp[i] if np.linalg.norm(node.point - obs_wp) < self.d_waypoint_distance])
-            return np.exp(0.5 * n_obs_wp**2)
+            return np.exp(0.05 * n_obs_wp**2)
         return 0
     # apply to the values the penalty functions of distance, workspace and exploitation
     for i, node in enumerate(leaf_nodes):
@@ -409,44 +411,33 @@ def bias_beta_path_selection(self, agent_idx: int, current_position: Optional[np
         mutual_information_values[i] -= workspace_penalty(node)
         mutual_information_values[i] -= exploitation_penalty(node)
 
-        
-
+    
     # Select the leaf node that maximizes the mutual information
     max_mi_idx = np.argmax(mutual_information_values)
     selected_leaf = leaf_nodes[max_mi_idx]
     
     # Trace back the path to the root for the selected leaf
-    path = []
-    while selected_leaf is not None and current_budget is not None and current_budget > 0:
-        if not path:
-            path.append(selected_leaf.point)  # Add the first point
-        else:
-            # Calculate the distance between the last point in path and the new point
-            last_point = path[-1]
-            next_point = selected_leaf.point
-            distance_to_next_point = np.linalg.norm(next_point - last_point)
-            
-            # If the distance is greater than d_waypoint_distance, interpolate
-            if distance_to_next_point > self.d_waypoint_distance:
-                direction = (next_point - last_point) / distance_to_next_point
-                steps = int(distance_to_next_point // self.d_waypoint_distance)
-                for step in range(1, steps + 1):
-                    new_point = last_point + direction * self.d_waypoint_distance * step
-                    path.append(new_point)
-                    current_budget -= self.d_waypoint_distance
-                    if current_budget <= 0:
-                        break
-            else:
-                path.append(next_point)
-                current_budget -= distance_to_next_point
-
-        if current_budget <= 0:
-            break
-
-        selected_leaf = selected_leaf.parent
+    possible_path = trace_path_to_root(selected_leaf)
     
-    path.reverse()
-    return path
+    # Ensure agent does not get stuck in the same position
+    if len(possible_path) == 1 and np.array_equal(possible_path[0], current_position):
+        current_leafs = [node for node in current_leafs if not np.array_equal(node.point, selected_node.point)]
+        if current_leafs:
+            selected_node = np.random.choice(current_leafs)
+            possible_path = trace_path_to_root(selected_node)
+
+    # Make sure there is enough budget to do the path, if not stop where the budget ends
+    if current_budget is not None and current_position is not None:
+        path = []
+        for node in possible_path:
+            if current_budget - np.linalg.norm(node - current_position) < self.d_waypoint_distance:
+                path.append(node)
+                break
+            path.append(node)
+            #self.information_update() 
+            current_budget -= np.linalg.norm(node - current_position) if not path else np.linalg.norm(node - path[-1])
+        return path
+    return possible_path
 
 def mutual_information_gain(K_pi, K_pio, beta_t: float) -> float:
     """
@@ -542,6 +533,10 @@ class InformativeRRTBaseClass:
         self.trees.add(self.agents_roots[agent_idx])
 
     def plot_current_state(self, iteration: int, save_dir: str) -> None:
+        if current_thread() is main_thread():
+            pass
+        else:
+            return
         fig, axs = plt.subplots(1, 2, figsize=(20, 8), constrained_layout=True)
 
         max_log_value = np.ceil(np.log10(np.max(self.scenario.g_truth))) if np.max(self.scenario.g_truth) != 0 else 1

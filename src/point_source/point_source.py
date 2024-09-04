@@ -24,7 +24,7 @@ class PointSourceField:
     """
 
     def __init__(self, num_sources: int = 1, workspace_size: Tuple[int, int, int, int] = (0, 40, 0, 40), obstacles: List = [],
-                 intensity_range: Tuple[int, int] = (10000, 1000000), kernel_params: Optional[Dict[str, float]] = None, seed: Optional[int] = None):
+                 intensity_range: Tuple[int, int] = (100000, 1000000), kernel_params: Optional[Dict[str, float]] = None, seed: Optional[int] = None):
         """
         Initializes the point source field model.
 

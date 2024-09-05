@@ -4,7 +4,7 @@ import json
 from tqdm import tqdm
 from typing import List, Dict, Callable
 
-from src.boustrophedon.boustrophedon import Boustrophedon, MultiAgentBoustrophedon
+from src.boustrophedon.boustrophedon import Boustrophedon, MR_Boustrophedon
 from src.point_source.point_source import PointSourceField
 from src.informative.informative import *
 from src.estimation.estimation import estimate_sources_bayesian
@@ -111,7 +111,7 @@ def run_simulations(scenarios: List[PointSourceField], strategy_instances: Dict[
                     Z_pred, std = strategy.run()
                     Z_true = scenario.ground_truth()
                     RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
-                    WEIGHTED_RMSE = np.sqrt(np.sum((Z_true * (np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2)) / np.sum(Z_true))
+                    WEIGHTED_RMSE = np.sqrt(np.sum((Z_true * (np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2)) / np.sum(Z_true)) - 1
 
                     Diff_Entropy = calculate_differential_entropy(std)
                     TIME = strategy.time_taken if hasattr(strategy, 'time_taken') else None

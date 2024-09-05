@@ -76,6 +76,9 @@ def helper_plot(scenario, scenario_number: int, z_true: np.ndarray, z_pred: np.n
     if hasattr(path, 'num_agents'):
         strategy_title += f' - Agents: {path.num_agents}'
         save_fig_title = save_fig_title.replace('.png', f'_agents_{path.num_agents}.png')
+    if hasattr(path, 'stage_lambda'):
+        strategy_title += f' - Stage Lambda: {path.stage_lambda}'
+        save_fig_title = save_fig_title.replace('.png', f'_stage_lambda_{path.stage_lambda}.png')
     
     max_log_value = np.ceil(np.log10(z_true.max())) if z_true.max() != 0 else 1
     levels = np.logspace(0, max_log_value, int(max_log_value) + 1)
@@ -89,9 +92,12 @@ def helper_plot(scenario, scenario_number: int, z_true: np.ndarray, z_pred: np.n
     axs[0, 0].set_xlabel('x')
     axs[0, 0].set_ylabel('y')
     axs[0, 0].set_facecolor(cmap(0))
-
+    for obstacle in scenario.obstacles:
+        if obstacle['type'] == 'rectangle':
+            rect = plt.Rectangle((obstacle['x'], obstacle['y']), obstacle['width'], obstacle['height'], color='black')
+            axs[0, 0].add_patch(rect)
     cs_pred = axs[0, 1].contourf(scenario.X, scenario.Y, z_pred, levels=levels, cmap=cmap, norm=colors.BoundaryNorm(levels, ncolors=cmap.N, clip=True))
-    fig.colorbar(cs_pred, ax=axs[0, 1], format=ticker.LogFormatterMathtext())
+    #fig.colorbar(cs_pred, ax=axs[0, 1], format=ticker.LogFormatterMathtext())
     axs[0, 1].set_title('Predicted Field')
     x_new, y_new = path_list['full_path'][-1]
     if hasattr(path, 'num_agents'):
@@ -110,7 +116,10 @@ def helper_plot(scenario, scenario_number: int, z_true: np.ndarray, z_pred: np.n
         axs[0, 1].plot(source[0], source[1], 'yX', markersize=10, label='Estimated Source')
 
     axs[0, 1].set_facecolor(cmap(0))
-
+    for obstacle in scenario.obstacles:
+        if obstacle['type'] == 'rectangle':
+            rect = plt.Rectangle((obstacle['x'], obstacle['y']), obstacle['width'], obstacle['height'], color='black')
+            axs[0, 1].add_patch(rect)
     for i in range(1, rounds + 1):
         top_corner_fig, axs_top = plt.subplots(1, 1, figsize=(20, 8), constrained_layout=True)
         top_corner_fig.suptitle(strategy_title, fontsize=16)
@@ -142,11 +151,15 @@ def helper_plot(scenario, scenario_number: int, z_true: np.ndarray, z_pred: np.n
     cs_uncertainty = axs[1, 0].contourf(scenario.X, scenario.Y, std_reshaped, cmap='Reds')
     axs[1, 0].set_title('Uncertainty Field')
     axs[1, 0].set_facecolor('pink')
-
+    # add colorbar for uncertainty
+    fig.colorbar(cs_uncertainty, ax=axs[1, 0])
+    
     axs[1, 1].boxplot([rmse_list, wrmse_list], labels=['RMSE', 'WRMSE'], whis=50)
     axs[1, 1].set_title('RMSE and WRMSE Evolution')
     axs[1, 1].set_xlabel('Metric')
     axs[1, 1].set_ylabel('Value')
+    # make y start in 0 always
+    axs[1, 1].set_ylim(0.0, max(max(rmse_list), max(wrmse_list)) + 0.1)
     axs[1, 1].grid(True)
 
     if not os.path.exists(f'{folder}/metrics'):
@@ -157,6 +170,8 @@ def helper_plot(scenario, scenario_number: int, z_true: np.ndarray, z_pred: np.n
     axs_metrics.set_title('RMSE and WRMSE Evolution')
     axs_metrics.set_xlabel('Metric')
     axs_metrics.set_ylabel('Value')
+    # make y start in 0 always
+    axs_metrics.set_ylim(0.0, max(max(rmse_list), max(wrmse_list)) + 0.1)
     axs_metrics.grid(True)
     metrics_fig.savefig(f'{folder}/metrics/{os.path.basename(save_fig_title).replace(".png", "_metrics.png")}')
     plt.close(metrics_fig)

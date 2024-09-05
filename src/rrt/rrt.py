@@ -11,7 +11,7 @@ matplotlib.use('Agg')  # Use a non-interactive backend
 from matplotlib import pyplot as plt
 from scipy.spatial import KDTree, distance
 from scipy.stats import uniform
-from typing import List, Tuple, Callable, Optional
+from typing import List, Tuple, Callable, Optional, Dict
 from tqdm import tqdm
 from threading import Thread, Lock , current_thread, main_thread # Import threading utilities
 from src.boustrophedon.boustrophedon import Boustrophedon
@@ -149,26 +149,100 @@ def point_source_gain_all(self, node: InformativeTreeNode, agent_idx: int) -> fl
             for source in self.best_estimates:
                 d_src = np.linalg.norm([x_t - source[0], y_t - source[1]])
                 F_src = calculate_suppression_factor(node.point, source, other_sources)
-                point_source_gain += (1 + np.exp(-(d_src - 2)**2 / (32))) * F_src
+                point_source_gain += (np.exp(-(d_src - 2)**2 / (32))) * F_src
 
             distance_penalty_val = distance_penalty(node)
             exploitation_penalty_val = exploitation_penalty(node)
-            workspace_penalty_val = workspace_penalty(node)
+            workspace_penalty_val = workspace_penalty(self, node, node.parent)
             return point_source_gain - distance_penalty_val - exploitation_penalty_val - workspace_penalty_val
         else:
-            return 0
+            workspace_penalty_val = workspace_penalty(self, node, node.parent)
+            return -workspace_penalty_val
 
     def distance_penalty(node: InformativeTreeNode) -> float:
         if node.parent:
             return np.exp(0.5 * np.linalg.norm(node.point - node.parent.point)**2)
         return 0
 
-    def workspace_penalty(node: InformativeTreeNode) -> float:
-        # if inside workspace 0, if not np.inf
-        if node.point[0] < self.scenario.workspace_size[0] or node.point[0] > self.scenario.workspace_size[1] or node.point[1] < self.scenario.workspace_size[2] or node.point[1] > self.scenario.workspace_size[3]:
+    def workspace_penalty(self, node: InformativeTreeNode, parent_node: Optional[InformativeTreeNode] = None) -> float:
+        """
+        Calculate a penalty for nodes outside the workspace or inside obstacles.
+        
+        Parameters:
+        - node: The node to evaluate.
+        - parent_node: The parent node of the current node, if applicable.
+        
+        Returns:
+        - float: np.inf if the node is outside the workspace or inside an obstacle; 0 otherwise.
+        """
+        # Check if the node is within the workspace boundaries
+        if node.point[0] < self.scenario.workspace_size[0] or node.point[0] > self.scenario.workspace_size[1] or \
+        node.point[1] < self.scenario.workspace_size[2] or node.point[1] > self.scenario.workspace_size[3]:
+            # print(f"Node {node.point} is outside workspace boundaries.")
             return np.inf
+
+        # Check if the node is inside an obstacle
+        for obstacle in self.scenario.obstacles:
+            if obstacle["type"] == "rectangle":
+                x_min, y_min = obstacle["x"], obstacle["y"]
+                x_max, y_max = x_min + obstacle["width"], y_min + obstacle["height"]
+                
+                if x_min <= node.point[0] <= x_max and y_min <= node.point[1] <= y_max:
+                    # print(f"Node {node.point} is inside an obstacle.")
+                    return np.inf
+
+        # If a parent node is provided, check if the path between the parent node and the current node intersects any obstacles
+        def obstacle_free(self, point1: np.ndarray, point2: np.ndarray) -> bool:
+            """Check if the line segment between point1 and point2 is free of obstacles."""
+            for obstacle in self.scenario.obstacles:
+                if line_intersects_obstacle(self, point1, point2, obstacle):
+                    print(f"Path from {point1} to {point2} intersects an obstacle.")
+                    return False
+            return True
+
+        def line_intersects_obstacle(self, point1: np.ndarray, point2: np.ndarray, obstacle: Dict) -> bool:
+            """Check if a line between two points intersects a given obstacle."""
+            x1, y1 = point1
+            x2, y2 = point2
+
+            if obstacle['type'] == 'rectangle':
+                x_min, y_min = obstacle['x'], obstacle['y']
+                x_max = x_min + obstacle['width']
+                y_max = y_min + obstacle['height']
+
+                # Check for intersections with all four sides of the rectangle
+                return (line_intersects_line(x1, y1, x2, y2, x_min, y_min, x_min, y_max) or
+                        line_intersects_line(x1, y1, x2, y2, x_max, y_min, x_max, y_max) or
+                        line_intersects_line(x1, y1, x2, y2, x_min, y_min, x_max, y_min) or
+                        line_intersects_line(x1, y1, x2, y2, x_min, y_max, x_max, y_max))
+
+            return False
+
+        def line_intersects_line(x1, y1, x2, y2, x3, y3, x4, y4):
+            """Check if the line segment from (x1, y1) to (x2, y2) intersects with the line segment from (x3, y3) to (x4, y4)."""
+            # Calculate direction of the lines
+            d1 = (x2 - x1, y2 - y1)
+            d2 = (x4 - x3, y4 - y3)
+            
+            # Solve for intersection
+            denominator = d1[0] * d2[1] - d1[1] * d2[0]
+            if denominator == 0:
+                return False  # Lines are parallel
+            
+            # Calculate intersection point
+            t = ((x3 - x1) * d2[1] - (y3 - y1) * d2[0]) / denominator
+            u = ((x3 - x1) * d1[1] - (y3 - y1) * d1[0]) / denominator
+            
+            # Check if intersection point is on both segments
+            return 0 <= t <= 1 and 0 <= u <= 1
+        if parent_node:
+            if not obstacle_free(self, parent_node.point, node.point):
+                # print(f"Path from {parent_node.point} to {node.point} intersects an obstacle.")
+                return np.inf
         return 0
-    
+
+
+
     def exploitation_penalty(node: InformativeTreeNode) -> float:
         if len(self.agents_obs_wp[agent_idx]) > 0:
             n_obs_wp = 0
@@ -182,7 +256,7 @@ def point_source_gain_all(self, node: InformativeTreeNode, agent_idx: int) -> fl
     while current_node.parent:
         final_gain += sources_gain(current_node)
         current_node = current_node.parent
-    return max(final_gain, 0)
+    return final_gain
 
 # Tree Generation Functions
 
@@ -331,26 +405,22 @@ def informative_source_metric_path_selection(self, agent_idx: int, current_posit
 
     if self.best_estimates.size == 0:
         selected_node = np.random.choice(current_leafs)
-    else:
-        assigned_source = self.assignments[agent_idx]
-        if assigned_source == -1:
-            # Agent is exploring
-            # print(f"Agent {agent_idx} is exploring")
+        # make sure information is not -inf
+        while selected_node.information == -np.inf:
             selected_node = np.random.choice(current_leafs)
-        else:
-            # Agent is assigned to a source, find the closest leaf to the source
-            assigned_source_position = self.best_estimates[assigned_source][:2] if assigned_source < len(self.best_estimates) else None
-            selected_node = min(current_leafs, key=lambda node: np.linalg.norm(node.point - assigned_source_position)) if assigned_source_position is not None else np.random.choice(current_leafs)
-            # print(f"Agent {agent_idx} is assigned to source {assigned_source}")
+    else:
+        # choose the node with highest information gain
+        selected_node = max(current_leafs, key=lambda node: node.information)
+    # print(f"Selected node information: {selected_node.information}")
 
     possible_path = trace_path_to_root(selected_node)
     
     # Ensure agent does not get stuck in the same position
-    if len(possible_path) == 1 and np.array_equal(possible_path[0], current_position):
-        current_leafs = [node for node in current_leafs if not np.array_equal(node.point, selected_node.point)]
-        if current_leafs:
-            selected_node = np.random.choice(current_leafs)
-            possible_path = trace_path_to_root(selected_node)
+    # if len(possible_path) == 1 and np.array_equal(possible_path[0], current_position):
+    #     current_leafs = [node for node in current_leafs if not np.array_equal(node.point, selected_node.point)]
+    #     if current_leafs:
+    #         selected_node = np.random.choice(current_leafs)
+    #         possible_path = trace_path_to_root(selected_node)
 
     # Make sure there is enough budget to do the path, if not stop where the budget ends
     if current_budget is not None and current_position is not None:
@@ -587,7 +657,8 @@ class InformativeRRTBaseClass:
         current_budget = budget_portion
         while current_budget > self.d_waypoint_distance and self.budget[agent_idx] > 0:
             self.tree_generation(max_budget, agent_idx)
-            if self.budget[agent_idx] <= self.stage_lambda * budget_portion * self.budget_iter:
+            budget_factor = self.budget[agent_idx] / max_budget
+            if budget_factor > self.stage_lambda:
                 path = bias_beta_path_selection(self, agent_idx, self.agents_full_path[agent_idx][-1] if self.agents_full_path[agent_idx] else None, current_budget)
             else:
                 path = self.path_selection(agent_idx, self.agents_full_path[agent_idx][-1] if self.agents_full_path[agent_idx] else None, current_budget)
@@ -599,7 +670,7 @@ class InformativeRRTBaseClass:
                 self.budget[agent_idx] -= budget_spent
                 current_budget -= budget_spent
                 if len(self.agents_obs_wp[agent_idx % self.num_agents]) > 0:
-                    self.information_update() if self.budget[agent_idx] > (self.stage_lambda) * budget_portion * self.budget_iter else gp_information_update(self)
+                    self.information_update() if budget_factor <= self.stage_lambda else gp_information_update(self)
 
             if len(path) > 0 and self.budget[agent_idx] > 0:
                 self.initialize_trees(path[-1], agent_idx)
@@ -611,7 +682,7 @@ class InformativeRRTBaseClass:
             self.initialize_trees(self.agent_positions[i], i)
 
         start_time = time.time()
-        save_dir = './images/step_by_step' + self.name + '/' + str(int(time.time())) + '/'
+        save_dir = './images/' + self.name + '/step_by_step/' + str(int(time.time())) + '/'
 
         # Create the directory if it does not exist
         if not os.path.exists(save_dir):
@@ -803,12 +874,12 @@ class RRTRIG_PointSourceInformative_DistanceRotation_SourceMetric_PathPlanning(I
     def information_update(self) -> None:
         source_metric_information_update(self)
 
-class RRTRIG_PointSourceInformative_All_SourceMetric_PathPlanning(InformativeRRTBaseClass):
+class MR_IPP(InformativeRRTBaseClass):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.best_estimates = np.array([])
         
-        self.name = "RRTRIG_PointSourceInformative_All_SourceMetric_Path"
+        self.name = "MR_IPP"
 
     def tree_generation(self, budget_portion: float, agent_idx: int) -> None:
         rig_tree_generation(self, budget_portion, agent_idx, gain_function=point_source_gain_all)

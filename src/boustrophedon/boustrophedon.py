@@ -65,7 +65,7 @@ class Boustrophedon():
         return self.scenario.predict_spatial_field(self.obs_wp, self.measurements)
 
 
-class MultiAgentBoustrophedon:
+class MR_Boustrophedon:
     def __init__(self, scenario, num_agents=1, d_waypoint_distance=2.5, budget=375, line_spacing=4):
         """
         Initializes a Boustrophedon path planner for multiple agents.
@@ -80,7 +80,7 @@ class MultiAgentBoustrophedon:
         self.agents_full_path = [[] for _ in range(num_agents)]
         self.agents_measurements = [[] for _ in range(num_agents)]
         self.agents_obs_wp = [[] for _ in range(num_agents)]
-        self.name = "Multi-Agent Boustrophedon"
+        self.name = "MR_Boustrophedon"
 
         if num_agents > 1:
             # divide the space in num_agents equal parts and set each start at the start of the next segment

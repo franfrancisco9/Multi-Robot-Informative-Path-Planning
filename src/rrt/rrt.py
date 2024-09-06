@@ -416,11 +416,11 @@ def informative_source_metric_path_selection(self, agent_idx: int, current_posit
     possible_path = trace_path_to_root(selected_node)
     
     # Ensure agent does not get stuck in the same position
-    # if len(possible_path) == 1 and np.array_equal(possible_path[0], current_position):
-    #     current_leafs = [node for node in current_leafs if not np.array_equal(node.point, selected_node.point)]
-    #     if current_leafs:
-    #         selected_node = np.random.choice(current_leafs)
-    #         possible_path = trace_path_to_root(selected_node)
+    if len(possible_path) == 1 and np.array_equal(possible_path[0], current_position):
+        current_leafs = [node for node in current_leafs if not np.array_equal(node.point, selected_node.point)]
+        if current_leafs:
+            selected_node = np.random.choice(current_leafs)
+            possible_path = trace_path_to_root(selected_node)
 
     # Make sure there is enough budget to do the path, if not stop where the budget ends
     if current_budget is not None and current_position is not None:

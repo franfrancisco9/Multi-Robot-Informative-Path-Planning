@@ -87,15 +87,43 @@ def helper_plot(scenario, scenario_number: int, z_true: np.ndarray, z_pred: np.n
     fig.suptitle(strategy_title, fontsize=16)
 
     cs_true = axs[0, 0].contourf(scenario.X, scenario.Y, z_true, levels=levels, cmap=cmap, norm=colors.BoundaryNorm(levels, ncolors=cmap.N, clip=True))
-    fig.colorbar(cs_true, ax=axs[0, 0], format=ticker.LogFormatterMathtext())
+    colorbar = fig.colorbar(cs_true, ax=axs[0, 0], format=ticker.LogFormatterMathtext())
     axs[0, 0].set_title('Ground Truth')
     axs[0, 0].set_xlabel('x')
     axs[0, 0].set_ylabel('y')
     axs[0, 0].set_facecolor(cmap(0))
+
     for obstacle in scenario.obstacles:
         if obstacle['type'] == 'rectangle':
             rect = plt.Rectangle((obstacle['x'], obstacle['y']), obstacle['width'], obstacle['height'], color='black')
             axs[0, 0].add_patch(rect)
+    # Similar to how we save the top right corner plot, We want to save into a scenario folders the top left corner plot with the
+    # scenario number 
+    if not os.path.exists(f'{folder}/top_left_corner'):
+        os.makedirs(f'{folder}/top_left_corner')
+    # only save the axs[0,0] with different title (scenario number) and dont save if it already exists
+    # scenario_fig, axs_scenario = plt.subplots(1, 1, figsize=(20, 8), constrained_layout=True)
+    # scenario_fig.suptitle("Scenario " + str(scenario_number), fontsize=16)
+    # cs_true = axs_scenario.contourf(scenario.X, scenario.Y, z_true, levels=levels, cmap=cmap, norm=colors.BoundaryNorm(levels, ncolors=cmap.N, clip=True))
+    # scenario_fig.colorbar(cs_true, ax=axs_scenario, format=ticker.LogFormatterMathtext())
+    # axs_scenario.set_xlabel('x (m)')
+    # axs_scenario.set_ylabel('y (m)')
+    # axs_scenario.set_facecolor(cmap(0))
+    # # make sure text size is big enough to be readable
+    # for item in ([axs_scenario.title, axs_scenario.xaxis.label, axs_scenario.yaxis.label] +
+    #             axs_scenario.get_xticklabels() + axs_scenario.get_yticklabels() + colorbar.ax.get_yticklabels()):
+    #     item.set_fontsize(16)
+    # for obstacle in scenario.obstacles:
+    #     if obstacle['type'] == 'rectangle':
+    #         rect = plt.Rectangle((obstacle['x'], obstacle['y']), obstacle['width'], obstacle['height'], color='black')
+    #         axs_scenario.add_patch(rect)
+    # # mark with red cross the sources only label once
+    # for source in scenario.sources:
+    #     axs_scenario.plot(source[0], source[1], 'rX', markersize=10, label='Sources') if scenario.sources.index(source) == 0 else axs_scenario.plot(source[0], source[1], 'rX', markersize=10)
+
+    # scenario_fig.savefig(f'{folder}/top_left_corner/{os.path.basename(save_fig_title).replace(".png", "_scenario_" + str(scenario_number) + ".png")}')
+    # plt.close(scenario_fig)
+
     cs_pred = axs[0, 1].contourf(scenario.X, scenario.Y, z_pred, levels=levels, cmap=cmap, norm=colors.BoundaryNorm(levels, ncolors=cmap.N, clip=True))
     #fig.colorbar(cs_pred, ax=axs[0, 1], format=ticker.LogFormatterMathtext())
     axs[0, 1].set_title('Predicted Field')
@@ -139,8 +167,8 @@ def helper_plot(scenario, scenario_number: int, z_true: np.ndarray, z_pred: np.n
         axs_top.set_facecolor(cmap(0))
 
         axs_top.set_title('Predicted Field')
-        axs_top.set_xlabel('x')
-        axs_top.set_ylabel('y')
+        axs_top.set_xlabel('x (m)')
+        axs_top.set_ylabel('y (m)')
         if not os.path.exists(f'{folder}/top_corner'):
             os.makedirs(f'{folder}/top_corner')
 

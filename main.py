@@ -169,7 +169,14 @@ def main():
     print("Scenarios and strategies loaded successfully.")
     print("#" * 80)
     print("Running simulations...")
-    run_simulations(scenarios, strategy_instances, config["args"], args.debug)
+    # run for config args lambda 1.0, 0.75, 0.5, 0.25 and 0.0
+    lambda_values = [1.0, 0.75, 0.5, 0.25, 0.0]
+    for i, lambda_value in enumerate(lambda_values):
+        config["args"]["stage_lambda"] = lambda_value
+        print("#" * 80)
+        print(f"Running simulations for lambda = {config["args"]["stage_lambda"]}")
+        print ("#" * 80)
+        run_simulations(scenarios, strategy_instances, config["args"], args.debug)
     print("#" * 80)
     print("Simulations completed successfully.")
     print("#" * 80)

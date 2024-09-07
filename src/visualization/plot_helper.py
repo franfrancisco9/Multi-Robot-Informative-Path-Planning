@@ -139,9 +139,9 @@ def helper_plot(scenario, scenario_number: int, z_true: np.ndarray, z_pred: np.n
     axs[0, 1].plot(path.obs_wp[:, 0], path.obs_wp[:, 1], 'ro', markersize=1)
     for source in scenario.sources:
         axs[0, 1].plot(source[0], source[1], 'rX', markersize=10, label='Source')
-    source_estimated = source_list['source'][-1]
-    for source in source_estimated:
-        axs[0, 1].plot(source[0], source[1], 'yX', markersize=10, label='Estimated Source')
+    # source_estimated = source_list['source'][-1]
+    # for source in source_estimated:
+    #     axs[0, 1].plot(source[0], source[1], 'yX', markersize=10, label='Estimated Source')
 
     axs[0, 1].set_facecolor(cmap(0))
     for obstacle in scenario.obstacles:
@@ -162,8 +162,8 @@ def helper_plot(scenario, scenario_number: int, z_true: np.ndarray, z_pred: np.n
         axs_top.plot(path_list['obs_wp'][i-1][:, 0], path_list['obs_wp'][i-1][:, 1], 'ro', markersize=1)
         for source in scenario.sources:
             axs_top.plot(source[0], source[1], 'rX', markersize=10, label='Source')
-        for source in source_list['source'][i-1]:
-            axs_top.plot(source[0], source[1], 'yX', markersize=10, label='Estimated Source')
+        # for source in source_list['source'][i-1]:
+        #     axs_top.plot(source[0], source[1], 'yX', markersize=10, label='Estimated Source')
         axs_top.set_facecolor(cmap(0))
 
         axs_top.set_title('Predicted Field')
@@ -171,7 +171,8 @@ def helper_plot(scenario, scenario_number: int, z_true: np.ndarray, z_pred: np.n
         axs_top.set_ylabel('y (m)')
         if not os.path.exists(f'{folder}/top_corner'):
             os.makedirs(f'{folder}/top_corner')
-
+        # colorber
+        fig.colorbar(cs_pred, ax=axs_top, format=ticker.LogFormatterMathtext())
         top_corner_fig.savefig(f'{folder}/top_corner/{os.path.basename(save_fig_title).replace(".png", "_predicted_field_run_" + str(i) + ".png")}')
         plt.close(top_corner_fig)
 
@@ -194,7 +195,7 @@ def helper_plot(scenario, scenario_number: int, z_true: np.ndarray, z_pred: np.n
         os.makedirs(f'{folder}/metrics')
     metrics_fig, axs_metrics = plt.subplots(1, 1, figsize=(20, 8), constrained_layout=True)
     metrics_fig.suptitle(strategy_title, fontsize=16)
-    axs_metrics.boxplot([rmse_list, wrmse_list], labels=['RMSE', 'WRMSE'])
+    axs_metrics.boxplot([rmse_list, wrmse_list], labels=['RMSE', 'WRMSE'], whis=50)
     axs_metrics.set_title('RMSE and WRMSE Evolution')
     axs_metrics.set_xlabel('Metric')
     axs_metrics.set_ylabel('Value')

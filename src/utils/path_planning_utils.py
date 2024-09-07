@@ -42,7 +42,7 @@ def save_run_info(run_number: int, rmse_per_scenario: Dict, wrmse_per_scenario: 
     - folder_path: Path to the folder where run information is saved. Default is "./runs_review".
     """
     os.makedirs(folder_path, exist_ok=True)
-    filename = os.path.join(folder_path, f"run_{run_number}.txt")
+    filename = os.path.join(folder_path, f"run_{run_number}_{args['stage_lambda']}.txt")
 
     def calculate_rmse(predicted_sources: np.ndarray, actual_sources: np.ndarray) -> List:
         """Calculate RMSE for x, y, and intensity between predicted and actual sources."""

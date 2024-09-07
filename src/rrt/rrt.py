@@ -332,7 +332,7 @@ def gp_information_update(self) -> None:
     self.measurements = sum((agent_measurements for agent_measurements in self.agents_measurements), [])
     self.obs_wp = sum((agent_wp for agent_wp in self.agents_obs_wp), [])
     self.full_path = sum((agent_path for agent_path in self.agents_full_path), [])
-    if len(self.measurements) > 0 and len(self.measurements) % 2 == 0:
+    if len(self.measurements) > 0 and len(self.measurements) % 5 == 0:
         min_len = min(len(self.measurements), len(self.obs_wp))
         self.measurements = self.measurements[:min_len]
         self.obs_wp = self.obs_wp[:min_len]
@@ -353,7 +353,7 @@ def source_metric_information_update(self) -> None:
     self.measurements = sum((agent_measurements for agent_measurements in self.agents_measurements), [])
     self.obs_wp = sum((agent_wp for agent_wp in self.agents_obs_wp), [])
     self.full_path = sum((agent_path for agent_path in self.agents_full_path), [])
-    if  len(self.measurements) > 0 and len(self.measurements) % 2 == 0:
+    if  len(self.measurements) > 0 and len(self.measurements) % 5 == 0:
         min_len = min(len(self.measurements), len(self.obs_wp))
         self.measurements = self.measurements[:min_len]
         self.obs_wp = self.obs_wp[:min_len]
@@ -444,12 +444,12 @@ def bias_beta_path_selection(self, agent_idx: int, current_position: Optional[np
     leaf_points = np.array([node.point for node in leaf_nodes])
 
     # Compute the covariance matrix for leaf points (K_pi)
-    K_pi = self.scenario.gp.kernel_(leaf_points)
+    K_pi = self.scenario.gp.kernel(leaf_points)
     
     # Compute the cross-covariance matrix between leaf points and observation points (K_pio)
     observed_points = np.array(self.agents_obs_wp[agent_idx])
     if observed_points.size > 0:
-        K_pio = self.scenario.gp.kernel_(leaf_points, observed_points)
+        K_pio = self.scenario.gp.kernel(leaf_points, observed_points)
     else:
         K_pio = np.zeros((len(leaf_points), 0))  # No observations yet
 
@@ -682,14 +682,14 @@ class InformativeRRTBaseClass:
             self.initialize_trees(self.agent_positions[i], i)
 
         start_time = time.time()
-        save_dir = './images/' + self.name + '/step_by_step/' + str(int(time.time())) + '/'
+        # save_dir = './images/' + self.name + '/step_by_step/' + str(int(time.time())) + '/'
 
-        # Create the directory if it does not exist
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        # Always clean existing images
-        for file in os.listdir(save_dir):
-            os.remove(os.path.join(save_dir, file))
+        # # Create the directory if it does not exist
+        # if not os.path.exists(save_dir):
+        #     os.makedirs(save_dir)
+        # # Always clean existing images
+        # for file in os.listdir(save_dir):
+        #     os.remove(os.path.join(save_dir, file))
 
         iteration = 0
         with tqdm(total=sum(self.budget), desc="Running " + str(self.num_agents) + " Agent " + self.name) as pbar:
@@ -711,7 +711,7 @@ class InformativeRRTBaseClass:
                     t.join()
 
                 # Plot current state after all threads have completed their iteration
-                self.plot_current_state(iteration, save_dir)
+                # self.plot_current_state(iteration, save_dir)
                 iteration += 1
 
                 # Update progress bar after each iteration

@@ -111,7 +111,7 @@ def run_simulations(scenarios: List[PointSourceField], strategy_instances: Dict[
                     Z_pred, std = strategy.run()
                     Z_true = scenario.ground_truth()
                     RMSE = np.sqrt(np.mean((np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2))
-                    WEIGHTED_RMSE = np.sqrt(np.sum((Z_true * (np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2)) / np.sum(Z_true)) - 1
+                    WEIGHTED_RMSE = np.sqrt(np.sum((Z_true * (np.log10(Z_true + 1) - np.log10(Z_pred + 1))**2)) / np.sum(Z_true)) 
 
                     Diff_Entropy = calculate_differential_entropy(std)
                     TIME = strategy.time_taken if hasattr(strategy, 'time_taken') else None
@@ -162,22 +162,26 @@ def main():
     print("Arguments:")
     for key, value in config["args"].items():
         print(f"{key}: {value}")
-    print("#" * 80)
-    print("Loading scenarios and strategies...")
-    scenarios = initialize_scenarios(config)
-    strategy_instances = initialize_strategies(config, config["args"])
-    print("Scenarios and strategies loaded successfully.")
-    print("#" * 80)
     print("Running simulations...")
     # run for config args lambda 1.0, 0.75, 0.5, 0.25 and 0.0
-    lambda_values = [1.0, 0.75, 0.5, 0.25, 0.0]
-    for i, lambda_value in enumerate(lambda_values):
-        config["args"]["stage_lambda"] = lambda_value
-        print("#" * 80)
-        print(f"Running simulations for lambda = {config["args"]["stage_lambda"]}")
-        print ("#" * 80)
-        run_simulations(scenarios, strategy_instances, config["args"], args.debug)
-    print("#" * 80)
+    lambda_values = [1.0, 0.5, 0.25, 0.0]
+    num_agents = [1, 2, 3]
+    for i, num_agent in enumerate(num_agents):
+        config["args"]["num_agents"] = num_agent
+        config["args"]["run_number"] = str(num_agent) + " Agents Final Big Values"
+        for i, lambda_value in enumerate(lambda_values):
+            config["args"]["stage_lambda"] = lambda_value
+            print("#" * 80)
+            print(f"Running simulations for lambda = {config["args"]["stage_lambda"]}\n Number of agents = {config["args"]["num_agents"]}")
+            print ("#" * 80)
+            print("#" * 80)
+            print("Loading scenarios and strategies...")
+            scenarios = initialize_scenarios(config)
+            strategy_instances = initialize_strategies(config, config["args"])
+            print("Scenarios and strategies loaded successfully.")
+            print("#" * 80)
+            run_simulations(scenarios, strategy_instances, config["args"], args.debug)
+            print("#" * 80)
     print("Simulations completed successfully.")
     print("#" * 80)
 
